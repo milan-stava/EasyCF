@@ -538,6 +538,82 @@ trikrat1
 L3	ld	bc,#091C
 	call	T42_TEXT
 */
+
+;28) (Busy's routine)
+HL2ASCII32
+;Prevod bin->dec bez znamienka
+; in: zzbin
+;out: zzdec
+
+
+bindec	ld	hl,zzdec            ;; Vynulovanie buffera dec
+	ld	bc,lldec*#0100
+cls1	ld	(hl),c
+	inc	hl
+	djnz	cls1
+	ld	c,8*llbin           ;; Opakuj pre kazdy bit bin:
+bndc0	call	binx2               ;; vyrotovanie bitu z bin
+	ld	hl,eedec
+	ld	b,lldec             ;; a zarotovanie toho bitu do dec
+bndc2	dec	hl
+	ld	a,(hl)
+	adc	a,a
+	cp	#0a
+	jr	c,bndc3
+	sub	#0a
+bndc3	ld	(hl),a
+	ccf
+	djnz	bndc2
+	dec	c
+	jr	nz,bndc0
+
+	ld	hl,zzdec
+	ld	b,10		;; change it to ASCII
+prev_ascii32
+	ld	a,(hl)
+	or	a
+	jr	nz,asc32n
+	inc	hl
+	djnz	prev_ascii32
+
+	inc	b		;osetreni 0
+	dec	hl		;udelej misto pro zobrazeni "O"
+
+asc32n	ld	d,h
+	ld	e,l		;; DE=ASCII number start
+
+asc32_n	ld	a,#30
+	or	(hl)
+	ld	(hl),a
+	inc 	hl
+	djnz	asc32_n
+	ret
+
+binx2	ld	hl,zzbin            ;; Nasobenie bin dvomi
+	ld	b,llbin
+	xor	a
+bnxx2	rl	(hl)
+	inc	hl
+	djnz	bnxx2
+	ret
+
+zzbin	db	#ff,#ff,#ff,#ff		;vstup v bajtech
+eebin
+llbin	=	eebin-zzbin
+
+zzdec	db	0,0,0,0,0		;vystup v ASCII
+	db	6,5,5,3,5
+eedec
+lldec	=	eedec-zzdec
+	db	0			;zarážka pro tisk
+
+;pricti BC k HLDE
+add_bc_hlde	add	hl,bc
+		ret	nc
+		inc	de
+		ret
+
+
 ;
 ;hledani prvni sectoru pro data
 ;prohledava se MBR, prvni partion, a hleda se v root dir. prvni datovy sector prvniho souboru
@@ -547,11 +623,11 @@ L3	ld	bc,#091C
 ;na 08h az 0Bh je cislo relativniho sektoru zacatku partition (nebo na 01h az 03h ve formatu hlava/sektor/cylindr)
 ;
 ;prvni sektor partition je BOOT a tam jsou tyto zajimave udaje:
-;0Bh, 0Ch � pocet bytu na sektor
-;0Eh, 0Fh � pocet sektoru pred prvni FAT
-;10h � pocet FAT
-;11h, 12h � pocet polozek v ROOTu
-;16h, 17h � pocet sektoru ve FAT
+;0Bh, 0Ch   pocet bytu na sektor
+;0Eh, 0Fh   pocet sektoru pred prvni FAT
+;10h   pocet FAT
+;11h, 12h   pocet polozek v ROOTu
+;16h, 17h   pocet sektoru ve FAT
 ;prvni datovy sektor je: zacatek_partition + sektoru_pred_FAT + sektoru_ve_FAT * pocet_FAT + polozek_v_ROOT * 20h / bytu_na_sektor
 
 next
@@ -562,10 +638,14 @@ next
 ;novy kod- testuje vsechny 4 partisny
 ;nejprve nacteme MBR
 		ld	ix,BUFFER
-		ld	bc,0
-		ld	d,b
-		ld	e,b
-		call	LBAREAD
+		ld	hl,0
+		ld	d,h
+		ld	e,h
+		call	SDREAD
+;		ld	bc,0
+;		ld	d,b
+;		ld	e,b
+;		call	LBAREAD
 
 		ld	a,#C
 		ld	(no_partition+1),a	;init print pozice
@@ -610,7 +690,7 @@ part_text
 		ld	de,#55AA		;znacka platneho zaznamu MBR
 		or	a
 		sbc	hl,de
-		jr	z,load_boott
+		jr	z,load_boot
 
 		ld	hl,0		;jeste puvodni test MBR (puvodni EasyHdd)
 		ld	d,h
@@ -631,10 +711,31 @@ part_text
 MBRno		ld	(bootsec+4),de	;pro MBRno, vyplnujeme vse 0
 		ld	(bootsec+1),hl	;schovame cislo bootsektoru pro budouci vypocet
 
-					;mame boot sektor, jdeme ho nahrat a taky vypsat
+;mame boot sektor, jdeme ho nahrat a taky vypsat na obrazovku
+		ld	(zzbin),hl
+		ld	(zzbin+2),de
+		push	hl
+		push	de
+		call	HL2ASCII32
+		ld	hl,zzdec+3
+		set	7,(hl)
+		ld	hl,zzdec
+		ld	bc,#0B10
+		call	T42_TEXT
+
+load_boot	pop	de
+		pop	hl
+		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
+
+bootsec		ld	hl,#5555	;nizsi
+		ld	de,#5555	;vyssi
+		ld	c,(ix+14)
+		ld	b,(ix+15)
+		call	add_bc_hlde
 
 
-load_boot
+
+
 
 
 
@@ -1052,16 +1153,16 @@ Slaveinentify
 ;prohledava se MBR, prvni partion, a hleda se v root dir. prvni datovy sector prvniho souboru
 ;prvni sektor disku je MBR:
 ;
-;na 1BEh zacinaji parametry prvni partition (10h ka�d�)
-;na 08h a� 0Bh je cislo relativniho sektoru zacatku partition (nebo na 01h a� 03h ve formatu hlava/sektor/cylindr)
+;na 1BEh zacinaji parametry prvni partition (10h ka d )
+;na 08h a  0Bh je cislo relativniho sektoru zacatku partition (nebo na 01h a  03h ve formatu hlava/sektor/cylindr)
 ;
-;prvn� sektor partition je BOOT a tam jsou tyto zaj�mav� �daje:
-;0Bh, 0Ch � pocet bytu na sektor
-;0Eh, 0Fh � pocet sektoru pred prvni FAT
-;10h � pocet FAT
-;11h, 12h � pocet polozek v ROOTu
-;16h, 17h � pocet sektoru ve FAT
-;prvn� datov� sektor je: zacatek_partition + sektoru_pred_FAT + sektoru_ve_FAT * pocet_FAT + polozek_v_ROOT * 20h / bytu_na_sektor
+;prvn  sektor partition je BOOT a tam jsou tyto zaj mav   daje:
+;0Bh, 0Ch   pocet bytu na sektor
+;0Eh, 0Fh   pocet sektoru pred prvni FAT
+;10h   pocet FAT
+;11h, 12h   pocet polozek v ROOTu
+;16h, 17h   pocet sektoru ve FAT
+;prvn  datov  sektor je: zacatek_partition + sektoru_pred_FAT + sektoru_ve_FAT * pocet_FAT + polozek_v_ROOT * 20h / bytu_na_sektor
 ;
 ;	ld	hl,TEXTPARSEC
 ;	ld	bc,#1302
