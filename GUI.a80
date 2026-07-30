@@ -613,6 +613,46 @@ add_bc_hlde	add	hl,bc
 		inc	de
 		ret
 
+;===============================================================
+DEHL_Times_A:
+;===============================================================
+;Inputs:
+;     DEHL is a 32 bit factor
+;     A is an 8 bit factor
+;Outputs:
+;     interrupts disabled
+;     BC is not changed
+;     AHLDE is the 40-bit result
+;     D'E' is the lower 16 bits of the input
+;     H'L' is the lower 16 bits of the output
+;     B' is 0
+;     C' is not changed
+;     A' is not changed
+;===============================================================
+     di
+     push hl
+     or a
+     sbc hl,hl
+     exx
+     pop de
+     sbc hl,hl
+     ld b,8
+mul32Loop:
+       add hl,hl
+       rl e \ rl d
+       add a,a
+       jr nc,$+8
+         add hl,de
+         exx
+         adc hl,de
+         inc a
+         exx
+       djnz mul32Loop
+       push hl
+       exx
+       pop de
+       ret
+
 
 ;
 ;hledani prvni sectoru pro data
@@ -629,6 +669,57 @@ add_bc_hlde	add	hl,bc
 ;11h, 12h   pocet polozek v ROOTu
 ;16h, 17h   pocet sektoru ve FAT
 ;prvni datovy sektor je: zacatek_partition + sektoru_pred_FAT + sektoru_ve_FAT * pocet_FAT + polozek_v_ROOT * 20h / bytu_na_sektor
+
+
+/*
+1. Výpočet pro FAT16
+********************
+Kořenový adresář u FAT16 má pevnou velikost a leží hned za poslední FAT tabulkou.
+
+Vzorec (číslo sektoru od začátku disku/partice):
+
+RootSector{FAT16}=ReservedSecCnt+(NumFATs x FATSize16)
+
+Velikost root adresáře (v sektorech) se spočítá jako (RootEntCnt × 32 + BytsPerSec - 1) / BytsPerSec, ale jeho začátek je dán čistě součtem rezervovaných sektorů a obou FAT tabulek.
+
+2. Výpočet pro FAT32
+Kořenový adresář u FAT32 nemá pevnou pozici, je to běžný cluster. Nejprve musíme spočítat začátek datové oblasti (DataSecStart) a k němu přičíst offset daný počátečním clusterem (RootClus).
+
+Vzorec pro začátek datové oblasti (stejný jako FAT16):
+
+DataSecStart=ReservedSecCnt+(NumFATs x FATSize32)
+
+Vzorec pro počáteční sektor root adresáře (rootClus):
+
+RootSector{FAT32}= DataSecStart+((RootClus-2) x SecPerClus)
+
+(Odečítá se 2, protože clustery 0 a 1 v datové oblasti fyzicky neexistují – číslování datových clusterů začíná od 2).
+
+
+
+Kde najít rootClus a SecPerClus (pro FAT32)
+*******************************************
+Obě hodnoty jsou uloženy v boot sektoru (v datové struktuře BPB – BIOS Parameter Block):
+
+- SecPerClus (Sectors per Cluster): 1bajtová hodnota na offsetu 0x0D (decimálně 13) od začátku boot sektoru
+
+- rootClus (Root Directory Start Cluster): 4bajtová hodnota na offsetu 0x2C (decimálně 44) od začátku boot sektoru (obvykle 2)
+
+Výpočet počátečního sektoru Root Dir
+************************************
+Pro výpočty používáme tyto proměnné z boot sektoru:
+- ReservedSecCnt = Počet rezervovaných sektorů (offset 0x0E (dec 14), 2 bajty)
+- NumFATs = Počet FAT tabulek (offset 0x10 (dec 16), 1 bajt, obvykle 2)
+- FATSize16 = Počet sektorů jedné FAT u FAT16 (offset 0x16 (dec 22), 2 bajty)
+- FATSize32 = Počet sektorů jedné FAT u FAT32 (offset 0x24 (dec 36), 4 bajty)
+- RootEntCnt = Maximální počet položek v root adresáři u FAT16 (offset 0x11 (dec 17), 2 bajty, obvykle 512)
+- BytsPerSec = Počet bajtů na sektor (offset 0x0B (dec 11), 2 bajty, obvykle 512)
+- SecPerClus = Počet sektorů na cluster (offset 0x0D (dec 13), 1 bajt)
+- RootClus = Počáteční cluster root adresáře u FAT32 (offset 0x2C (dec 44), 4 bajty)
+
+*/
+
+
 
 next
 	ld	hl,TEXTPARSEC
@@ -653,7 +744,8 @@ next
 					;MBR je v bufferu
 		ld	b,4
 		ld	ix,BUFFER+446
-test_partitions
+
+test_partitions				;loop start
 		push	bc
 		push	ix
 
@@ -663,13 +755,13 @@ test_partitions
 
 	ld	hl,TEXT_FAT32	;test typu oddilu, bud FAT16/32/other
 	ld	bc,#0c12
-	ld	e,0
+	set	0,(ix-1)	;nastav priznak FAT32
 	cp	#B		;pro typ oddilu FAT32
 	jr	z,part_text
 	cp	#C
 	jr	z,part_text
 
-	inc	e
+	res	0,(ix-1)	;nastav priznak FAT16
 	ld	hl,TEXT_FAT16
 	cp	6		;pro typ oddilu FAT16
 	jr	z,part_text
@@ -681,8 +773,6 @@ test_partitions
 	ld	hl,TEXT_OTHER
 
 part_text
-	ld	a,e
-	ld	(part_type+1),a
 	call	T42_TEXT
 
 					;ted hledame boot sektor pro dany oddil
@@ -721,19 +811,34 @@ MBRno		ld	(bootsec+4),de	;pro MBRno, vyplnujeme vse 0
 		set	7,(hl)
 		ld	hl,zzdec
 		ld	bc,#0B10
-		call	T42_TEXT
+		call	T42_TEXT	;vypis jeho cislo
 
 load_boot	pop	de
 		pop	hl
 		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
 
+
+
 bootsec		ld	hl,#5555	;nizsi
 		ld	de,#5555	;vyssi
-		ld	c,(ix+14)
-		ld	b,(ix+15)
+		ld	c,(ix+14)	;ted hledame prvni datovy sektor (korenac, kde jsou image)- offsety 14 a 15 v bootu je pocet sektoru v reserved area
+		ld	b,(ix+15)	;pricteme boot sec
 		call	add_bc_hlde
 
+		ld	e,(ix+16)	;pocet FAT
+		ld	d,0
 
+		bit	0,(ix-1)
+		jr	nz,part_32
+;part_type	ld	a,#55		;either 0 (FAT32) or 1 (FAT16)
+;		or	a
+;		jr	z,part_32
+		ld	l,(ix+22)	;pocet sektoru FATky ve FAT 16
+		ld	h,(ix+23)
+		jr	part_calc
+part_32		ld	l,(ix+36)	;pocet sekotru FATky ve FAT 32	
+		ld	h,(ix+37)
+part_calc				;
 
 
 
@@ -2510,6 +2615,9 @@ PROHOD1
 D1LBA	defw	0,0,0
 D2LBA	defw	0,0,0
 LEN	equ	$-32768
+
+fat_type	db	#55		;bit 0=Z=FAT16, bit 0=NZ=FAT32
+
 BUFFER	;equ	25000
 	block	512
 BUFFER2	;equ	38000
