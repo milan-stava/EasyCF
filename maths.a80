@@ -1,5 +1,5 @@
 ;nasobim 32 bitove cislo 8 bitovym
-	module nasobeni_32_X_8
+	module 32_X_8
 ;===============================================================
 DEHL_Times_A:
 ;===============================================================
@@ -43,7 +43,7 @@ mul32Loop:
 
 
 ;scitam 32 bitove cislo se 16 bitovym
-	module soucet_32_+_16
+	module 32_+_16
 ;in=HLDE, BC, out=HLDE (HL=nizsi, DE=vyssi)
 	;pricti BC k HLDE
 add_bc_hlde	add	hl,bc
@@ -55,7 +55,7 @@ add_bc_hlde	add	hl,bc
 
 
 ;odecitam 8 bitove cislo od 32 bitoveho
-	module odecet_32_-_8
+	module 32_-_8
 ;in=HLDE, A, out=HLDE (HL=nizsi, DE=vyssi)
 	ld	c,a
 	ld	a,l
@@ -68,7 +68,7 @@ add_bc_hlde	add	hl,bc
 
 
 ;scitam dve 32 bitova cisla
-	module soucet_32_+_32
+	module 32_+_32
 ;in=hl,de,hl',de' (hl=nejnizsi... de'=nejvyssi)
 	add hl,de
 	exx

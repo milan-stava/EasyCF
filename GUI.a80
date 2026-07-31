@@ -817,32 +817,114 @@ load_boot	pop	de
 		pop	hl
 		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
 
+		bit	0,(ix-1)	;jdeme pocitat, nejprve počet FATx delka FAT
+		ld	e,(ix+22)	;FAT16-pocet sektoru FAT
+		ld	d,(ix+23)
+		ld	hl,0
+		jr	z,lb1_f16		
+		ld	e,(ix+36)	;FAT32- pocet sektoru FAT
+		ld	d,(ix+37
+		ld	l,(ix+38)
+		ld	h,(ix+39)
+lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 
+		call	32_x_8		;nasobeni 32x8, vysledek je HL'DE'
+		exx
+		ld	c,(ix+14)	;pocet rezervovanych sektoru
+		ld	b,(ix+15)
+		call	32_+_16		;scitani 32+16, out HLDE
+		push	hl
+		push	de
+		exx
+		pop	de
+		pop	hl
+		exx			;vysledek jsme dali do HL' a DE'
+					;jeste pricist sektory od bootu
 
 bootsec		ld	hl,#5555	;nizsi
 		ld	de,#5555	;vyssi
-		ld	c,(ix+14)	;ted hledame prvni datovy sektor (korenac, kde jsou image)- offsety 14 a 15 v bootu je pocet sektoru v reserved area
-		ld	b,(ix+15)	;pricteme boot sec
-		call	add_bc_hlde
+		call	32_+_32		;vysledek je v HL...DE'
 
-		ld	e,(ix+16)	;pocet FAT
-		ld	d,0
+		bit	0,(ix-1)	;tady jsme hotovi pro FAT16
+		jr	z,load_root_dir
 
-		bit	0,(ix-1)
-		jr	nz,part_32
-;part_type	ld	a,#55		;either 0 (FAT32) or 1 (FAT16)
-;		or	a
-;		jr	z,part_32
-		ld	l,(ix+22)	;pocet sektoru FATky ve FAT 16
-		ld	h,(ix+23)
-		jr	part_calc
-part_32		ld	l,(ix+36)	;pocet sekotru FATky ve FAT 32	
-		ld	h,(ix+37)
-part_calc				;
+		push	hl		;je to FAT32, vypocet musime dokoncit
+		push	de		;ulozime DataSecStart/RootSectorFAT16
 
+		ld	e,(ix+46)	;RootClus
+		ld	d,(ix+47)
+		ld	l,(ix+48)
+		ld	h,(ix+49)
+		ld	a,2
+		call	32_-_8		;vysledek HLDE
+		ex	de,hl
+		ld	a,(ix+13)
+		call	32_X_8
+		exx
+		pop	de
+		pop	hl
+		exx			;HLDE=DataSecStart/RootSectorFAT16
+		call	32_+_32		;mame root dir sektor i pro FAT32
 
+load_root_dir	ld	(zzbin),hl	;nejprve tisk
+		ld	(zzbin+2),de
+		push	hl
+		push	de
+		call	HL2ASCII32
+		ld	hl,zzdec+3
+		set	7,(hl)
+		ld	hl,zzdec
+		ld	bc,#1810
+		call	T42_TEXT	;vypis jeho cislo
 
+					;... a load a vyhledani souboru .MBD/.MBH
+	ld	ix,BUFFER
+;;;	ld	a,%00000000	;master
+	call	LBAREAD
 
+	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
+	ld	de,32		;; kazda polozka ma 32 bytes
+nextfile
+	ld	a,(ix+08h)
+	cp	"M"
+	jr	nz, neplatne
+	ld	a,(ix+09h)
+	cp	"B"
+	jr	nz, neplatne
+	ld	a,(ix+0ah)
+	cp	"H"
+	jr	z, platne
+	cp	"D"
+	jr	z, platne
+neplatne
+	add	ix,de
+	djnz	nextfile
+	ld	e,2		;;pokud nenajdu pouziji cluster 0
+	jr	l1F
+
+platne	ld	e,(ix+1Ah)	;;cluster na kterem zacina soubor
+l1F	ld	d,0
+	dec	de		;;The clusters are numbered starting at 2, not 0! So the above calculation has to have 2 added to it to get the cluster number of a given allocation unit...and a cluster number is converted to an allocation unit number by subtracting 2...!
+	dec	de
+	pop	hl		;;pocet sectoru v clusteru, obvykle 64 (32KB cluster)
+	call	nasobeniHLDE.nasob	;; vysledek v IXHL
+	ex	de,hl
+	pop	hl		;; v HL je LBA Root Directory sectoru
+	add	hl,de
+	pop	de
+;; konec kodu pro vypocet prvniho datoveho sektoru s ohleden na souboru v rootu 
+	; vydelime 16; predpokladame velikost sec. 512 a 32bytu v root polozce
+	ld	b,4
+ctyrikrat1 
+	srl	d
+	rr	e
+	djnz	ctyrikrat1
+	add	hl,de
+	push	hl
+	ld	bc,#0B23
+	call	NUMBER4
+	pop	hl
+;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
 
 end_partition
 		pop	ix
@@ -987,6 +1069,9 @@ neplatne
 	djnz	nextfile
 	ld	e,2		;;pokud nenajdu pouziji cluster 0
 	jr	l1F
+
+;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti.
+
 platne	ld	e,(ix+1ah)	;;cluster na kterem zacina soubor
 l1F	ld	d,0
 	dec	de		;;The clusters are numbered starting at 2, not 0! So the above calculation has to have 2 added to it to get the cluster number of a given allocation unit...and a cluster number is converted to an allocation unit number by subtracting 2...!
