@@ -1,0 +1,78 @@
+;nasobim 32 bitove cislo 8 bitovym
+	module nasobeni_32_X_8
+;===============================================================
+DEHL_Times_A:
+;===============================================================
+;Inputs:
+;     DEHL is a 32 bit factor
+;     A is an 8 bit factor
+;Outputs:
+;     interrupts disabled
+;     BC is not changed
+;     AHLDE is the 40-bit result
+;     D'E' is the lower 16 bits of the input
+;     H'L' is the lower 16 bits of the output
+;     B' is 0
+;     C' is not changed
+;     A' is not changed
+;===============================================================
+     di
+     push hl
+     or a
+     sbc hl,hl
+     exx
+     pop de
+     sbc hl,hl
+     ld b,8
+mul32Loop:
+       add hl,hl
+       rl e \ rl d
+       add a,a
+       jr nc,$+8
+         add hl,de
+         exx
+         adc hl,de
+         inc a
+         exx
+       djnz mul32Loop
+       push hl
+       exx
+       pop de
+       ret
+	endmodule
+
+
+;scitam 32 bitove cislo se 16 bitovym
+	module soucet_32_+_16
+;in=HLDE, BC, out=HLDE (HL=nizsi, DE=vyssi)
+	;pricti BC k HLDE
+add_bc_hlde	add	hl,bc
+		ret	nc
+		inc	de
+		ret
+	endmodule
+
+
+
+;odecitam 8 bitove cislo od 32 bitoveho
+	module odecet_32_-_8
+;in=HLDE, A, out=HLDE (HL=nizsi, DE=vyssi)
+	ld	c,a
+	ld	a,l
+	sub	c
+	ret	nc
+	sub	l
+	ret
+	endmodule
+
+
+
+;scitam dve 32 bitova cisla
+	module soucet_32_+_32
+;in=hl,de,hl',de' (hl=nejnizsi... de'=nejvyssi)
+	add hl,de
+	exx
+	adc hl, de
+	exx
+	ret
+	endmodule
