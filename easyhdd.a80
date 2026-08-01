@@ -70,12 +70,11 @@
 ;slave/master, write protect
 ;------------------------------
 
-		org	25000
+	DEVICE ZXSPECTRUM48
 
-;		incbin"mon2+.bin"
 
 		org	32768
-
+START
 		call	GUI.gui
 		jp	INSTALL
 
@@ -357,13 +356,16 @@ verifyyes
 		ldir
 
 ;prepsani odkazu do nove sekvence
-		ld	a,#1c8
+;		ld	a,#1c8
+		ld	a,#C8
 		ld	(#148),a
 		ld	(#166),a
-		ld	a,#1bc
+;		ld	a,#1bc
+		ld	a,#BC
 		ld	(#144),a
 		ld	(#162),a
-		ld	a,#1BE
+;		ld	a,#1BE
+		ld	a,#BE
 		ld	(#1B7),a
 dmano
 		ld	hl,SEM
@@ -1503,6 +1505,7 @@ END1		equ	$-KKK+SEM1
 		include "GUI.a80"
 
 endfile
-patchLEN	equ 	$-32768
+patchLEN	equ 	$-START
 
-		savesna "EasySD.sna",32768
+		savesna "EasySD.sna",START
+		savebin "EasySD.bin",START,patchLEN

@@ -1,5 +1,6 @@
 ;nasobim 32 bitove cislo 8 bitovym
-	module 32_X_8
+;	module nasob
+_32_x_8
 ;===============================================================
 DEHL_Times_A:
 ;===============================================================
@@ -26,7 +27,8 @@ DEHL_Times_A:
      ld b,8
 mul32Loop:
        add hl,hl
-       rl e \ rl d
+       rl e
+	rl d
        add a,a
        jr nc,$+8
          add hl,de
@@ -39,23 +41,27 @@ mul32Loop:
        exx
        pop de
        ret
-	endmodule
+;	endmodule
 
 
 ;scitam 32 bitove cislo se 16 bitovym
-	module 32_+_16
+;	module soucet
+
+_32_plus_16
 ;in=HLDE, BC, out=HLDE (HL=nizsi, DE=vyssi)
 	;pricti BC k HLDE
-add_bc_hlde	add	hl,bc
+;add_bc_hlde	add	hl,bc
+		add	hl,bc
 		ret	nc
 		inc	de
 		ret
-	endmodule
+;	endmodule
 
 
 
 ;odecitam 8 bitove cislo od 32 bitoveho
-	module 32_-_8
+;	module odcitani
+_32_minus_8
 ;in=HLDE, A, out=HLDE (HL=nizsi, DE=vyssi)
 	ld	c,a
 	ld	a,l
@@ -63,16 +69,17 @@ add_bc_hlde	add	hl,bc
 	ret	nc
 	sub	l
 	ret
-	endmodule
+;	endmodule
 
 
 
 ;scitam dve 32 bitova cisla
-	module 32_+_32
+;	module soucet
+_32_plus_32
 ;in=hl,de,hl',de' (hl=nejnizsi... de'=nejvyssi)
 	add hl,de
 	exx
 	adc hl, de
 	exx
 	ret
-	endmodule
+;	endmodule

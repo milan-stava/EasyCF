@@ -1,1 +1,1 @@
-sjasm easyhdd.a80 -ml
+sjasmplus --lst easyhdd.a80

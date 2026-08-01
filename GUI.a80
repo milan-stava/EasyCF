@@ -1,4 +1,5 @@
-		include	"nasobeniHLDE.a80"
+		include "maths.a80"
+;		include	"nasobeniHLDE.a80"
 ;		include	"draw.a80"
 		include	"draw-jugo.a80"
 		include	"cls.a80"
@@ -177,7 +178,7 @@ nulydoCHSm
 	inc	hl
 	djnz	nulydoCHSm
 nemenCHSm1
-	jp	Slaveinentify
+;;	jp	Slaveinentify		;vyresit, proc to tu je?
 
 MASTERINFO
 	ld	hl,TEXT4	;nejdriv vypise texty
@@ -607,54 +608,7 @@ eedec
 lldec	=	eedec-zzdec
 	db	0			;zarážka pro tisk
 
-;pricti BC k HLDE
-add_bc_hlde	add	hl,bc
-		ret	nc
-		inc	de
-		ret
 
-;===============================================================
-DEHL_Times_A:
-;===============================================================
-;Inputs:
-;     DEHL is a 32 bit factor
-;     A is an 8 bit factor
-;Outputs:
-;     interrupts disabled
-;     BC is not changed
-;     AHLDE is the 40-bit result
-;     D'E' is the lower 16 bits of the input
-;     H'L' is the lower 16 bits of the output
-;     B' is 0
-;     C' is not changed
-;     A' is not changed
-;===============================================================
-     di
-     push hl
-     or a
-     sbc hl,hl
-     exx
-     pop de
-     sbc hl,hl
-     ld b,8
-mul32Loop:
-       add hl,hl
-       rl e \ rl d
-       add a,a
-       jr nc,$+8
-         add hl,de
-         exx
-         adc hl,de
-         inc a
-         exx
-       djnz mul32Loop
-       push hl
-       exx
-       pop de
-       ret
-
-
-;
 ;hledani prvni sectoru pro data
 ;prohledava se MBR, prvni partion, a hleda se v root dir. prvni datovy sector prvniho souboru
 ;prvni sektor disku je MBR:
@@ -732,7 +686,7 @@ next
 		ld	hl,0
 		ld	d,h
 		ld	e,h
-		call	SDREAD
+		call	SD_READ
 ;		ld	bc,0
 ;		ld	d,b
 ;		ld	e,b
@@ -823,16 +777,16 @@ load_boot	pop	de
 		ld	hl,0
 		jr	z,lb1_f16		
 		ld	e,(ix+36)	;FAT32- pocet sektoru FAT
-		ld	d,(ix+37
+		ld	d,(ix+37)
 		ld	l,(ix+38)
 		ld	h,(ix+39)
 lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 
-		call	32_x_8		;nasobeni 32x8, vysledek je HL'DE'
+		call	_32_x_8		;nasobeni 32x8, vysledek je HL'DE'
 		exx
 		ld	c,(ix+14)	;pocet rezervovanych sektoru
 		ld	b,(ix+15)
-		call	32_+_16		;scitani 32+16, out HLDE
+		call	_32_plus_16		;scitani 32+16, out HLDE
 		push	hl
 		push	de
 		exx
@@ -843,7 +797,7 @@ lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 
 bootsec		ld	hl,#5555	;nizsi
 		ld	de,#5555	;vyssi
-		call	32_+_32		;vysledek je v HL...DE'
+		call	_32_plus_32		;vysledek je v HL...DE'
 
 		bit	0,(ix-1)	;tady jsme hotovi pro FAT16
 		jr	z,load_root_dir
@@ -856,15 +810,17 @@ bootsec		ld	hl,#5555	;nizsi
 		ld	l,(ix+48)
 		ld	h,(ix+49)
 		ld	a,2
-		call	32_-_8		;vysledek HLDE
+		call	_32_minus_8		;vysledek HLDE
 		ex	de,hl
 		ld	a,(ix+13)
-		call	32_X_8
+		call	_32_x_8
 		exx
 		pop	de
 		pop	hl
 		exx			;HLDE=DataSecStart/RootSectorFAT16
-		call	32_+_32		;mame root dir sektor i pro FAT32
+		push	hl
+		push	de		;pushujeme ho
+		call	_32_plus_32		;mame root dir sektor i pro FAT32
 
 load_root_dir	ld	(zzbin),hl	;nejprve tisk
 		ld	(zzbin+2),de
@@ -899,19 +855,30 @@ nextfile
 neplatne
 	add	ix,de
 	djnz	nextfile
-	ld	e,2		;;pokud nenajdu pouziji cluster 0
+;	ld	e,2		;;pokud nenajdu pouziji cluster 0
+	ld	de,0
+	ld	h,d
+	ld	l,d		
 	jr	l1F
 
-platne	ld	e,(ix+1Ah)	;;cluster na kterem zacina soubor
-l1F	ld	d,0
-	dec	de		;;The clusters are numbered starting at 2, not 0! So the above calculation has to have 2 added to it to get the cluster number of a given allocation unit...and a cluster number is converted to an allocation unit number by subtracting 2...!
-	dec	de
-	pop	hl		;;pocet sectoru v clusteru, obvykle 64 (32KB cluster)
-	call	nasobeniHLDE.nasob	;; vysledek v IXHL
-	ex	de,hl
-	pop	hl		;; v HL je LBA Root Directory sectoru
-	add	hl,de
+
+;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
+
+platne	ld	e,(ix+26)	;;cluster na kterem zacina soubor
+	ld	d,(ix+27)
+	ld	l,(ix+20)
+	ld	h,(ix+21)	;hlde=cluster of a file
+	ld	a,2
+	call	_32_minus_8
+
+l1F	ld	a,(ix+13)		;pocet sektoru na cluster
+	call	_32_x_8			;vysledek v HLDE
+	exx
+					;posledni bude 32_+_32
 	pop	de
+	pop	hl		;hlde=zacatek datove oblasti z predchoziho vypoctu
+	call	_32_plus_32		;to by melo byt vse....
+
 ;; konec kodu pro vypocet prvniho datoveho sektoru s ohleden na souboru v rootu 
 	; vydelime 16; predpokladame velikost sec. 512 a 32bytu v root polozce
 	ld	b,4
@@ -932,7 +899,7 @@ end_partition
 		add	ix,bc			;move pointer to another partition
 		pop	bc
 
-		djnz	test_partitions
+;;		djnz	test_partitions		;moc daleko, musim vymyslet jinak
 
 no_partition	ld	b,#C
 		ld	c,1
@@ -1070,7 +1037,6 @@ neplatne
 	ld	e,2		;;pokud nenajdu pouziji cluster 0
 	jr	l1F
 
-;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti.
 
 platne	ld	e,(ix+1ah)	;;cluster na kterem zacina soubor
 l1F	ld	d,0
