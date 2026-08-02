@@ -1,6 +1,6 @@
 boot sec	2048 dec
 root dir	2180 dec (adresar se soubory MBD)
-soubor		2216 dec (startovni sektor souboru MBD)
+soubor		2216 dec (startovni sektor souboru MBD) (ze zacatku dava 2188/#88C)
 
 
 MID – Manufacturer ID

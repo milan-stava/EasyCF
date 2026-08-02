@@ -794,15 +794,11 @@ lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 		ld	c,(ix+14)	;pocet rezervovanych sektoru
 		ld	b,(ix+15)
 		call	ADD32_16	;scitani 32+16, out HLDE
-		push	de			;vysledek je v HLDE
-		push	hl		;jeste pricist sektory od bootu
+		exx			;vysledek je v HLDE
+					;jeste pricist sektory od bootu
 
 bootsec		ld	hl,#5555	;nizsi
-		pop	de
-		exx
-bootsec1	ld	hl,#5555	;vyssi
-		pop	de
-		exx			;spravne musime registry seradit pro scitani
+bootsec1	ld	de,#5555	;vyssi
 		call	ADD32_32		;vysledek je v HL...DE'
 
 		bit	0,(ix-1)	;tady jsme hotovi pro FAT16
@@ -833,16 +829,18 @@ load_root_dir	ld	(zzbin),hl	;nejprve tisk
 		push	hl
 		push	de
 		call	HL2ASCII32
-		ld	hl,zzdec+3
+		ld	hl,zzdec+10
 		set	7,(hl)
 		ld	hl,zzdec
-		ld	bc,#1810
+		ld	bc,#0B1B
 		call	T42_TEXT	;vypis jeho cislo
 
 					;... a load a vyhledani souboru .MBD/.MBH
-	ld	ix,BUFFER
+		pop	hl
+		pop	de
+;	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
-	call	LBAREAD
+	call	SD_READ
 
 	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
 	ld	de,32		;; kazda polozka ma 32 bytes
@@ -862,18 +860,18 @@ neplatne
 	add	ix,de
 	djnz	nextfile
 ;	ld	e,2		;;pokud nenajdu pouziji cluster 0
-	ld	de,0
-	ld	h,d
-	ld	l,d		
+	ld	hl,0
+	ld	d,h
+	ld	e,h		
 	jr	l1F
 
 
 ;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
 
-platne	ld	e,(ix+26)	;;cluster na kterem zacina soubor
-	ld	d,(ix+27)
-	ld	l,(ix+20)
-	ld	h,(ix+21)	;hlde=cluster of a file
+platne	ld	l,(ix+26)	;;cluster na kterem zacina soubor
+	ld	h,(ix+27)
+	ld	e,(ix+20)
+	ld	d,(ix+21)	;hlde=cluster of a file
 	ld	a,2
 	call	SUB32_8
 
