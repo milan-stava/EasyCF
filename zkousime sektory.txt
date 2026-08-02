@@ -1,3 +1,8 @@
+boot sec	2048 dec
+root dir	2180 dec (adresar se soubory MBD)
+soubor		2216 dec (startovni sektor souboru MBD)
+
+
 MID – Manufacturer ID
 
 MID je jedinečné číslo přidělené výrobcům organizací SD Association.

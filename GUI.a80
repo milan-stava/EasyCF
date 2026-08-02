@@ -707,15 +707,19 @@ test_partitions				;loop start
 		or	a			;0= partisna neni obsazena
 		jp	z,no_partition
 
+;	set	0,(ix-1)	;nastav priznak FAT32
+	ld	hl,fat_type
+	set	0,(hl)
 	ld	hl,TEXT_FAT32	;test typu oddilu, bud FAT16/32/other
 	ld	bc,#0c12
-	set	0,(ix-1)	;nastav priznak FAT32
 	cp	#B		;pro typ oddilu FAT32
 	jr	z,part_text
 	cp	#C
 	jr	z,part_text
 
-	res	0,(ix-1)	;nastav priznak FAT16
+	ld	hl,fat_type
+	res	0,(hl)
+;	res	0,(ix-1)	;nastav priznak FAT16
 	ld	hl,TEXT_FAT16
 	cp	6		;pro typ oddilu FAT16
 	jr	z,part_text
@@ -731,7 +735,7 @@ part_text
 
 					;ted hledame boot sektor pro dany oddil
 		ld	hl,(BUFFER2-2)
-		ld	de,#55AA		;znacka platneho zaznamu MBR
+		ld	de,#AA55		;znacka platneho zaznamu MBR
 		or	a
 		sbc	hl,de
 		jr	z,load_boot
@@ -746,14 +750,17 @@ part_text
 		and	a
 		jr	z,MBRno
 
-		ld	l,(ix+8)
+load_boot	ld	l,(ix+8)
 		ld	h,(ix+9)	;nizsi
 		ld	e,(ix+10)
 		ld	d,(ix+11)	;vyssi
 
 
-MBRno		ld	(bootsec+4),de	;pro MBRno, vyplnujeme vse 0
+MBRno		ld	(bootsec1+1),de	;pro MBRno, vyplnujeme vse 0
 		ld	(bootsec+1),hl	;schovame cislo bootsektoru pro budouci vypocet
+
+		push	hl
+		push	de
 
 ;mame boot sektor, jdeme ho nahrat a taky vypsat na obrazovku
 		ld	(zzbin),hl
@@ -761,43 +768,42 @@ MBRno		ld	(bootsec+4),de	;pro MBRno, vyplnujeme vse 0
 		push	hl
 		push	de
 		call	HL2ASCII32
-		ld	hl,zzdec+3
+		ld	hl,zzdec+10
 		set	7,(hl)
 		ld	hl,zzdec
 		ld	bc,#0B10
 		call	T42_TEXT	;vypis jeho cislo
 
-load_boot	pop	de
 		pop	hl
+		pop	de		;DE=nizsi
+		ld	ix,BUFFER
 		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
 
 		bit	0,(ix-1)	;jdeme pocitat, nejprve počet FATx delka FAT
-		ld	e,(ix+22)	;FAT16-pocet sektoru FAT
-		ld	d,(ix+23)
-		ld	hl,0
+		ld	l,(ix+22)	;FAT16-pocet sektoru FAT
+		ld	h,(ix+23)
+		ld	de,0
 		jr	z,lb1_f16		
-		ld	e,(ix+36)	;FAT32- pocet sektoru FAT
-		ld	d,(ix+37)
-		ld	l,(ix+38)
-		ld	h,(ix+39)
+		ld	l,(ix+36)	;FAT32- pocet sektoru FAT
+		ld	h,(ix+37)
+		ld	e,(ix+38)
+		ld	d,(ix+39)
 lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 
-		call	_32_x_8		;nasobeni 32x8, vysledek je HL'DE'
-		exx
+		call	MUL32x8		;nasobeni 32x8, vysledek je HL'DE'
 		ld	c,(ix+14)	;pocet rezervovanych sektoru
 		ld	b,(ix+15)
-		call	_32_plus_16		;scitani 32+16, out HLDE
-		push	hl
-		push	de
-		exx
-		pop	de
-		pop	hl
-		exx			;vysledek jsme dali do HL' a DE'
-					;jeste pricist sektory od bootu
+		call	ADD32_16	;scitani 32+16, out HLDE
+		push	de			;vysledek je v HLDE
+		push	hl		;jeste pricist sektory od bootu
 
 bootsec		ld	hl,#5555	;nizsi
-		ld	de,#5555	;vyssi
-		call	_32_plus_32		;vysledek je v HL...DE'
+		pop	de
+		exx
+bootsec1	ld	hl,#5555	;vyssi
+		pop	de
+		exx			;spravne musime registry seradit pro scitani
+		call	ADD32_32		;vysledek je v HL...DE'
 
 		bit	0,(ix-1)	;tady jsme hotovi pro FAT16
 		jr	z,load_root_dir
@@ -810,17 +816,17 @@ bootsec		ld	hl,#5555	;nizsi
 		ld	l,(ix+48)
 		ld	h,(ix+49)
 		ld	a,2
-		call	_32_minus_8		;vysledek HLDE
+		call	SUB32_8		;vysledek HLDE
 		ex	de,hl
 		ld	a,(ix+13)
-		call	_32_x_8
+		call	MUL32x8
 		exx
 		pop	de
 		pop	hl
 		exx			;HLDE=DataSecStart/RootSectorFAT16
 		push	hl
 		push	de		;pushujeme ho
-		call	_32_plus_32		;mame root dir sektor i pro FAT32
+		call	ADD32_32		;mame root dir sektor i pro FAT32
 
 load_root_dir	ld	(zzbin),hl	;nejprve tisk
 		ld	(zzbin+2),de
@@ -869,15 +875,15 @@ platne	ld	e,(ix+26)	;;cluster na kterem zacina soubor
 	ld	l,(ix+20)
 	ld	h,(ix+21)	;hlde=cluster of a file
 	ld	a,2
-	call	_32_minus_8
+	call	SUB32_8
 
 l1F	ld	a,(ix+13)		;pocet sektoru na cluster
-	call	_32_x_8			;vysledek v HLDE
+	call	MUL32x8			;vysledek v HLDE
 	exx
 					;posledni bude 32_+_32
 	pop	de
 	pop	hl		;hlde=zacatek datove oblasti z predchoziho vypoctu
-	call	_32_plus_32		;to by melo byt vse....
+	call	ADD32_32		;to by melo byt vse....
 
 ;; konec kodu pro vypocet prvniho datoveho sektoru s ohleden na souboru v rootu 
 	; vydelime 16; predpokladame velikost sec. 512 a 32bytu v root polozce
