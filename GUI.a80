@@ -673,6 +673,143 @@ Pro výpočty používáme tyto proměnné z boot sektoru:
 
 */
 
+/*
+1. k boot sektoru se umime dostat z MBR
+2. potřebné pro výpočet z boot sektoru, tyto hodnoty jsou relativni k zacatku partisny:
+---------------------------------------------------------------------------------------
+BPB_BytesPerSec		offset	11	delka 2
+BPB_SecPerClus		offset	13	delka 1
+BPB_RsvdSecCnt		offset	14	delka 2
+BPB_NumFATs		offset  16	delka 1
+
+FAT16:
+    BPB_RootEntCnt	offset	17	delka 2
+    BPB_FATSz16		offset	22	delka 2
+
+FAT32:
+    BPB_FATSz32		offset	36	delka 4
+    BPB_RootClus	offset	44	delka 4
+
+
+3. vypocet prvniho datoveho sektoru
+--------------------------------
+FAT16
+Spočti velikost Root Directory:
+
+RootDirSectors =
+(RootEntCnt × 32) / BytesPerSector
+
+Potom:
+FirstDataSectorRel =
+RsvdSecCnt +
+NumFATs × FATSz16 +
+RootDirSectors
+
+Absolutni LBA:
+FirstDataSectorAbs =
+PartitionStartLBA +
+FirstDataSectorRel
+
+
+FAT32
+Root Directory je součást datové oblasti.
+
+Proto:
+FirstDataSectorRel =
+RsvdSecCnt +
+NumFATs × FATSz32
+
+Absolutně:
+FirstDataSectorAbs =
+PartitionStartLBA +
+FirstDataSectorRel
+
+
+4. Načti Root Directory
+-----------------------
+FAT16
+
+Root Directory začíná na:
+RootDirLBA =
+PartitionStartLBA +
+RsvdSecCnt +
+NumFATs × FATSz16
+
+Je pevně daný.
+
+FAT32
+
+Root Directory začíná v clusteru:
+RootCluster = BPB_RootClus
+
+(obvykle 2)
+
+První sektor Root Directory:
+RootDirLBA =
+FirstDataSectorAbs +
+(RootCluster − 2) × SecPerClus
+
+
+
+5. Najdi soubor MBD / MBH
+-------------------------
+Projdi prvních 8 položek.
+
+Přečti:
+
+FAT16:
+DIR_FstClusLO
+
+FAT32:
+DIR_FstClusHI
+DIR_FstClusLO
+
+Vznikne:
+FirstCluster
+
+
+6. Převod clusteru na LBA
+-------------------------
+Platí pro FAT16 i FAT32 stejně:
+
+FirstFileLBA =
+FirstDataSectorAbs +
+(FirstCluster − 2) × SecPerClus
+
+Hotovo.
+
+
+Celý algoritmus
+---------------
+MBR
+ │
+ ├── PartitionStartLBA
+ │
+ ▼
+Boot Sector
+ │
+ ├── SecPerClus
+ ├── Reserved
+ ├── FATSize
+ ├── RootEntries (FAT16)
+ └── RootCluster (FAT32)
+ │
+ ▼
+FirstDataSectorAbs
+ │
+ ▼
+Root Directory
+ │
+ ▼
+Najdi MBD / MBH
+ │
+ ▼
+FirstCluster
+ │
+ ▼
+FirstFileLBA
+*/
+
 
 
 next
@@ -759,8 +896,8 @@ load_boot	ld	l,(ix+8)
 MBRno		ld	(bootsec1+1),de	;pro MBRno, vyplnujeme vse 0
 		ld	(bootsec+1),hl	;schovame cislo bootsektoru pro budouci vypocet
 
-		push	hl
-		push	de
+;		push	hl		;asi nadbytecne, ne?
+;		push	de
 
 ;mame boot sektor, jdeme ho nahrat a taky vypsat na obrazovku
 		ld	(zzbin),hl
@@ -775,10 +912,40 @@ MBRno		ld	(bootsec1+1),de	;pro MBRno, vyplnujeme vse 0
 		call	T42_TEXT	;vypis jeho cislo
 
 		pop	hl
-		pop	de		;DE=nizsi
+		pop	de		;HLDE=boot sektor
 		ld	ix,BUFFER
 		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
 
+		ld	hl,BUFFER+11	;prenes hodnoty z boot sektoru potrebne pro vypocet
+		ld	de,BPB_BytesPerSec	
+		ld	bc,8
+		ldir
+		ld	hl,BUFFER+22
+		ld	(BPB_FATSz16),hl
+		ld	hl,BUFFER+36
+		ld	bc,4
+		push	bc
+		ldir
+		ld	hl,BUFFER+44
+		pop	bc
+		ldir
+
+;hodnoty z bootu
+BPB_BytesPerSec		db	#5555	;offset	11	delka 2
+BPB_SecPerClus		db	#55	;offset	13	delka 1
+BPB_RsvdSecCnt		db	#5555	;offset	14	delka 2
+BPB_NumFATs		db	#55	;offset 16	delka 1
+
+FAT16:
+BPB_RootEntCnt		db	#5555	;offset	17	delka 2
+BPB_FATSz16		db	#555	;offset	22	delka 2
+
+FAT32:
+BPB_FATSz32		db	#5555,#5555	;offset	36	delka 4
+BPB_RootClus		db	#5555,#5555	;offset	44	delka 4
+
+;3. Výpočet prvního datového sektoru
+;pocet FAT x velikost FAT
 		bit	0,(ix-1)	;jdeme pocitat, nejprve počet FATx delka FAT
 		ld	l,(ix+22)	;FAT16-pocet sektoru FAT
 		ld	h,(ix+23)
@@ -789,17 +956,22 @@ MBRno		ld	(bootsec1+1),de	;pro MBRno, vyplnujeme vse 0
 		ld	e,(ix+38)
 		ld	d,(ix+39)
 lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
-
 		call	MUL32x8		;nasobeni 32x8, vysledek je HL'DE'
+
+;pricteme k tomu pocet rezervovanych sektoru
 		ld	c,(ix+14)	;pocet rezervovanych sektoru
 		ld	b,(ix+15)
 		call	ADD32_16	;scitani 32+16, out HLDE
 		exx			;vysledek je v HLDE
 					;jeste pricist sektory od bootu
-
+;pricteme k tomu 
 bootsec		ld	hl,#5555	;nizsi
 bootsec1	ld	de,#5555	;vyssi
 		call	ADD32_32		;vysledek je v HL...DE'
+
+
+
+
 
 		bit	0,(ix-1)	;tady jsme hotovi pro FAT16
 		jr	z,load_root_dir
@@ -819,10 +991,11 @@ bootsec1	ld	de,#5555	;vyssi
 		exx
 		pop	de
 		pop	hl
-		exx			;HLDE=DataSecStart/RootSectorFAT16
+		exx			;HLDE=DataSecStartFAT32/RootSectorFAT16
 		push	hl
 		push	de		;pushujeme ho
-		call	ADD32_32		;mame root dir sektor i pro FAT32
+		call	ADD32_32	
+					;mame root dir sektor i pro FAT32
 
 load_root_dir	ld	(zzbin),hl	;nejprve tisk
 		ld	(zzbin+2),de
@@ -837,7 +1010,7 @@ load_root_dir	ld	(zzbin),hl	;nejprve tisk
 
 					;... a load a vyhledani souboru .MBD/.MBH
 		pop	hl
-		pop	de
+		pop	de		;HLDE=DataSecStartFAT32/RootSectorFAT16
 ;	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
 	call	SD_READ
