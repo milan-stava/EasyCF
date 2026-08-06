@@ -949,6 +949,18 @@ BPB_RootClus		dw	#5555,#5555	;offset	44	delka 4
 
 ;3. Výpočet prvního datového sektoru
 ;pocet FAT x velikost FAT
+		ld	l,(ix+17)	;pouze pro FAT16. pocet polozek v Root diru, rovnou vypocitame pocet polozek
+		ld	h,(ix+18)	;(pocet polozek*32)/512=pocet sektoru
+		
+		ld	b,4		;vpocet si zjednodusime
+lb2_f16		srl	h
+		rr	l
+		djnz	lb2_f16
+		ld	(RootEntCnt+1),hl	;
+
+		ld	a,(ix+13)	;pocet sektoru na cluster
+		ld	(l1F+1),a
+
 		bit	0,(ix-1)	;jdeme pocitat, nejprve počet FATx delka FAT
 		ld	l,(ix+22)	;FAT16-pocet sektoru FAT
 		ld	h,(ix+23)
@@ -991,21 +1003,6 @@ bootsec1	ld	de,#5555	;vyssi
 		call	MUL32x8
 		call	ADD32_32
 					;HLDE=root dir pro FAT32
-/*
-;TOTO JE MOC BRZO, DAT AZ DO VYPOCTU DATOVEHO SEKTORU SOUBORU
-;pricitame RootDirsSectors (neboli RootEntCnt)- oznacuje pocet polozek v RootDirs sektoru
-;nasobime *32
-		ld	l,(ix+17)
-		ld	h,(ix+18)
-		ld	a,32
-		call	MUL32x8
-		exx
-		call	ADD32_32
-
-
-		push	hl
-		push	de
-*/
 
 load_root_dir	push	hl
 		push	de
@@ -1063,27 +1060,34 @@ platne	ld	l,(ix+26)	;;cluster na kterem zacina soubor
 	ld	a,2
 	call	SUB32_8
 
-l1F	ld	a,(ix+13)		;pocet sektoru na cluster
-	call	MUL32x8			;vysledek v HLDE
+l1F	ld	a,#55		;pocet sektoru na cluster
+	call	MUL32x8		;vysledek v HLDE
 	exx
-					;posledni bude 32_+_32
-	pop	de
-	pop	hl		;hlde=zacatek datove oblasti z predchoziho vypoctu
-	call	ADD32_32	;to by melo byt vse....
-				;v HLDE je prvni sektor image MBD/MBH, pro FAT16/FAT32:)
-/*stary kod
-;; konec kodu pro vypocet prvniho datoveho sektoru s ohleden na souboru v rootu 
-	; vydelime 16; predpokladame velikost sec. 512 a 32bytu v root polozce
-	ld	b,4
-ctyrikrat1 
-	srl	d
-	rr	e
-	djnz	ctyrikrat1
-	add	hl,de
-	push	hl
-	ld	bc,#0B23
-	call	NUMBER4
 	pop	hl
+	pop	de		;HLDE=Root Dir FAT32/FAT16
+	call	ADD32_32
+
+				;HLDE´prvni sektor image MBD/MBH pro FAT16:)
+;pricitame RootDirsSectors (neboli RootEntCnt)- oznacuje pocet polozek v RootDirs sektoru
+;nasobime *32
+;pouze u FAT16
+
+		bit	0,(ix+0)
+		jr	nz,end_partition
+
+		exx
+
+RootEntCnt	ld	hl,#5555
+		call	ADD32_32
+
+				;v HLDE je prvni sektor image MBD/MBH, i pro FAT32:)
+
+
+
+
+
+
+/*stary kod
 ;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
 */
 
