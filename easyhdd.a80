@@ -82,8 +82,8 @@ START
 ;General settings
 @autoinstall	db	0		;auto install (/wait for any key)
 @autoconfig	db	1		;auto configure (automatic search for first sector & set hdd parameters to VDT)
-@showsplash	db	1		;show splash screen
-@playnoise	db	1		;playnoise
+@showsplash	db	0		;show splash screen
+@playnoise	db	0		;playnoise
 		db	1		;show gui
 @noverify 	db	0		;disable write verify
 ;@dmar3		db	1		;install dma patch (oprava hodnoty dma registru R3)

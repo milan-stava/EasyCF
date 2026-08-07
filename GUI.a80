@@ -197,11 +197,11 @@ MASTERINFO
 	ld	hl,TEXT7
 	ld	bc,#0902
 	call	T42_TEXT
-	ld	hl,TEXT101
-	ld	bc,#0A02
-	call	T42_TEXT
-	ld	hl,TEXT_PART_TYPE
-	ld	bc,#0C02
+;	ld	hl,TEXT101
+;	ld	bc,#0A02
+;	call	T42_TEXT		;write protect davame pryc
+;	ld	hl,TEXT_PART_TYPE
+;	ld	bc,#0C02
 	call	T42_TEXT
 ;	ld	hl,TEXT102
 ;	ld	bc,#0A15
@@ -384,7 +384,7 @@ vcj	add	hl,hl
 
 	ld	bc,#090D
 	call	NUMBER2
-
+/*davame pryc, info je nepostatne
 ;permanent and temporal WP
 	bit	5,(ix+#1E)
 	ld	bc,#0A10
@@ -393,7 +393,7 @@ vcj	add	hl,hl
 	bit	4,(ix+#1E)
 	ld	bc,#0A22
 	call	pertmp
-
+*/
 ;CSD version
 	ld	a,(ix+#10)
 	and	%11000000
@@ -403,7 +403,7 @@ vcj	add	hl,hl
 csd1	ld	bc,#0624
 	call	T42_TEXT
 	jp	next
-
+/*
 pertmp	ld	hl,TEXT_YES
 	jr	nz,permyes
 	ld	hl,TEXT_NO
@@ -411,7 +411,7 @@ pertmp	ld	hl,TEXT_YES
 	ld	hl,TEXT_NO
 permyes	ld	bc,#0A10
 	jp	T42_TEXT
-
+*/
 
 
 
@@ -546,7 +546,7 @@ HL2ASCII32
 ; in: zzbin
 ;out: zzdec
 
-
+	push	bc
 bindec	ld	hl,zzdec            ;; Vynulovanie buffera dec
 	ld	bc,lldec*#0100
 cls1	ld	(hl),c
@@ -588,6 +588,7 @@ asc32_n	ld	a,#30
 	ld	(hl),a
 	inc 	hl
 	djnz	asc32_n
+	pop	bc
 	ret
 
 binx2	ld	hl,zzbin            ;; Nasobenie bin dvomi
@@ -810,7 +811,7 @@ FirstCluster
 FirstFileLBA
 */
 
-
+;tab_part	db	0,4,15,26	;sloupec tisku hodnot pro 4 partisny
 
 next
 	ld	hl,TEXTPARSEC
@@ -819,27 +820,32 @@ next
 
 ;novy kod- testuje vsechny 4 partisny
 ;nejprve nacteme MBR
+
+		ld	a,4		;pocet partisen
+		ld	ix,BUFFER+446	;prvni partisna
+		ld	b,#0C	;radek (meni se pro kazdou partisnu)
+
+test_partitions				;loop start
+		ld	c,2		;sloupec vzdy zaciname na 2 (posouva se spolu s tiskem)
+		push	af		;A= poradove cislo partisny (4-0)
+		push	ix		;zacatek udaje o partisne v MBR
+		push	bc		;radek+sloupec
+
 		ld	ix,BUFFER
 		ld	hl,0
 		ld	d,h
 		ld	e,h
 		call	SD_READ
-;		ld	bc,0
-;		ld	d,b
-;		ld	e,b
-;		call	LBAREAD
+
+		pop	bc
+		pop	ix
+		push	ix
+		push	bc		
 
 		ld	a,#C
 		ld	(no_partition+1),a	;init print pozice
 
-					;MBR je v bufferu
-		ld	b,4
-		ld	ix,BUFFER+446
-
-test_partitions				;loop start
-		push	bc
-		push	ix
-
+;MBR je v bufferu	
 		ld	a,(ix+4)		;test, zda je partisna vubec pritomna
 		or	a			;0= partisna neni obsazena
 		jp	z,no_partition
@@ -848,7 +854,7 @@ test_partitions				;loop start
 	ld	hl,fat_type
 	set	0,(hl)
 	ld	hl,TEXT_FAT32	;test typu oddilu, bud FAT16/32/other
-	ld	bc,#0c12
+;	ld	bc,#0c12
 	cp	#B		;pro typ oddilu FAT32
 	jr	z,part_text
 	cp	#C
@@ -868,6 +874,7 @@ test_partitions				;loop start
 	ld	hl,TEXT_OTHER
 
 part_text
+	pop	bc
 	call	T42_TEXT
 
 					;ted hledame boot sektor pro dany oddil
@@ -896,23 +903,37 @@ load_boot	ld	l,(ix+8)
 MBRno		ld	(bootsec1+1),de	;pro MBRno, vyplnujeme vse 0
 		ld	(bootsec+1),hl	;schovame cislo bootsektoru pro budouci vypocet
 
-;		push	hl		;asi nadbytecne, ne?
-;		push	de
 
 ;mame boot sektor, jdeme ho nahrat a taky vypsat na obrazovku
 		ld	(zzbin),hl
 		ld	(zzbin+2),de
 		push	hl
 		push	de
+;		push	bc		;BC=tiskova pozice
 		call	HL2ASCII32
-		ld	hl,zzdec+10
+;		pop	bc
+		inc	c		;posunuli jsme tiskovou pozici
+
+		ld	hl,zzdec+9
 		set	7,(hl)
 		ld	hl,zzdec
-		ld	bc,#0B10
-		call	T42_TEXT	;vypis jeho cislo
+;		ld	bc,#0B10
+
+mbs1		ld	a,(hl)
+		or	a
+		jr	nz,mbs2
+		inc	hl
+		inc	c
+		jr	mbs1
+
+mbs2		call	T42_TEXT	;vypis jeho cislo
 
 		pop	hl
 		pop	de		;HLDE=boot sektor
+
+		inc	c
+		push	bc		;posun tiskovou pozici
+
 		ld	ix,BUFFER
 		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
 
@@ -1004,24 +1025,37 @@ bootsec1	ld	de,#5555	;vyssi
 		call	ADD32_32
 					;HLDE=root dir pro FAT32
 
-load_root_dir	push	hl
-		push	de
+load_root_dir	pop	bc		;tiskova pozice, nechame ji venku, nic ji neposkozuje
+		push	hl
+		push	de		;dame to bokem
 
 		ld	(zzbin),hl	;nejprve tisk
 		ld	(zzbin+2),de
 
 		call	HL2ASCII32
-		ld	hl,zzdec+10
+		ld	hl,zzdec+9
 		set	7,(hl)
 		ld	hl,zzdec
-		ld	bc,#0B1B
-		call	T42_TEXT	;vypis jeho cislo
+;		ld	bc,#0B1B
+;		pop	bc
+lrd1		ld	a,(hl)
+		or	a
+		jr	nz,lrd2
+		inc	hl
+		inc	c
+		jr	lrd1
+
+lrd2		call	T42_TEXT	;vypis jeho cislo
 					;... a load a vyhledani souboru .MBD/.MBH
+		inc	c
+
 		pop	hl
 		pop	de		;HLDE=Root Dir FAT32/FAT16
 ;uschovame ho, bude ještě potřeba, je to start DIRs sektoru pro FAT16, nebo start datovch sektoru pro FAT32
 		push	hl		
 		push	de
+
+		push	bc		;tiskova pozice
 
 ;	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
@@ -1053,18 +1087,26 @@ neplatne
 
 ;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
 
-platne	ld	l,(ix+26)	;;cluster na kterem zacina soubor
+platne	pop	bc		;tiskova pozice
+	push	ix
+	pop	hl
+	set	7,(ix+10)
+	call	T42_TEXT	;vypis jeho nazev
+	push	bc		;tiskova pozice
+	ld	l,(ix+26)	;;cluster na kterem zacina soubor
 	ld	h,(ix+27)
 	ld	e,(ix+20)
 	ld	d,(ix+21)	;hlde=cluster of a file
-	ld	a,2
+	ld	a,2		;nutno odecist 2
 	call	SUB32_8
 
 l1F	ld	a,#55		;pocet sektoru na cluster
 	call	MUL32x8		;vysledek v HLDE
 	exx
+	pop	bc		;tiskova pozice
 	pop	hl
 	pop	de		;HLDE=Root Dir FAT32/FAT16
+	push	bc		;tiskova pozice
 	call	ADD32_32
 
 				;HLDE´prvni sektor image MBD/MBH pro FAT16:)
@@ -1082,30 +1124,72 @@ RootEntCnt	ld	hl,#5555
 
 				;v HLDE je prvni sektor image MBD/MBH, i pro FAT32:)
 
+/*
+osetrit:
+- neni MBR- pak bude svitit jen jeden radek ve vyisu, a bude snaha datekovat FAT16/FAT32/other
+- partisna neni FAT16/FAT32- nech sviti napis oth a skoci se na detekci dalsi partisny
+- partisna je FAT16/FAT32, ale soubor se nenasel- pak necht sviti cervene No File.
+
+Nasledne tyto 3 stavy se musi vepsat do VDT tabulky
 
 
+VDT bude jina nez stara:
+
+nova specifikace VDT:
+- dve VDT pro master a slave
+- kazda 4x info o partisne:
+;0	1	hodnota 1-4= 
+;1	1	info bajt
+;2	4	first LBA sector of first file on disk
 
 
+info bajt o oddilu rika:
+;bit 0		0= oddil neexistuje
+		1= oddil existuje
+;bit 1		1= platny oddil pro speccy (tj. obsahuje jako prvni MBD soubor, lze ho pouzit)
+		0= neplatny oddil pro speccy (tj. neobsahuje MBD soubor)
+;bit 2		0= FAT16, 1=FAT32 (volitelne)
+;bity 3-7	rezervovany
 
-/*stary kod
-;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
 */
 
 end_partition
-		pop	ix
-		ld	bc,16
-		add	ix,bc			;move pointer to another partition
 		pop	bc
+		pop	ix
+		pop	af
 
-;;		djnz	test_partitions		;moc daleko, musim vymyslet jinak
+		cp	4
+		jr	nz,ep2			;nejdo o prvni partisnu
+;zatim ulozime do VDT tabulky MBD image z prvni partisny, prechodne. V dalsich verzich bude volitelne.
+
+;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
+		ld	c,a
+		ld	a,(@autoconfig)
+		or	a
+		ld	a,c
+		jr	z,nemenfirstdatasectorm1
+		ld	de,VDT+5
+		ex	de,hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+
+ep2		inc	b			;zvys poradovy radek
+		ld	de,16
+		add	ix,de			;move pointer to another partition
+		dec	a
+ep1		jp	nz,test_partitions		;moc daleko, musim vymyslet jinak
+
+		jr	nemenfirstdatasectorm1
 
 no_partition	ld	b,#C
 		ld	c,1
 		ld	hl,TEXT_PART_EMPTY
 		call	T42_TEXT
-		jr	end_partition
+		jr	ep1
 
 ;stary kod-testuje jen prvni partisnu
+nemenfirstdatasectorm1
 /*
 ;nacteni MBR
 	ld	ix,BUFFER
@@ -1618,13 +1702,13 @@ Slaveinentify
 ;*/
 */
 	ld	hl,TEXT17
-	ld	bc,#0E02
+	ld	bc,#1102
 	call	T42_TEXT
 	ld	hl,TEXT18
-	ld	bc,#0F03
+	ld	bc,#1203
 	call	T42_TEXT
 	ld	hl,TEXT19
-	ld	bc,#1003
+	ld	bc,#1303
 	call	T42_TEXT
 
 Endinentify
@@ -1702,16 +1786,16 @@ TEXT_CLR
 
 TEXT100	dc	16,67,"Press any key to install"
 ;TEXT101	dc	16,70,"C/H/S:"
-TEXT101	dc	"Permanent WP:      Temporal WP:"
+;TEXT101	dc	"Permanent WP:      Temporal WP:"
 TEXT102	db	16,70,"Capacity: "
 	dc	16,69,"     MB"
 TEXTPARSEC
-	db	16,70,"1st Par. Sec.:"
+	db	16,70,"Par  1stParSec  1stDatSec 1stFile"
 	dc	16,69," "
 
-TEXTDATASEC
-	db	16,70,"1st Data Sec.:"
-	dc	16,69," "
+;TEXTDATASEC
+;	db	16,70,"1st Data Sec.:"
+;	dc	16,69," "
 
 Manufacturer1	dc	"Panasonic"
 Manufacturer2	dc	"Toshiba / Kioxia"
@@ -1728,9 +1812,9 @@ TEXT_CSD	dc	"CSD:"
 TEXT_10		dc	"1.0"
 TEXT_20		dc	"2.0"
 TEXT_PART_TYPE	dc	"Partition type:"
-TEXT_FAT16	dc	"FAT 16"
-TEXT_FAT32	dc	"FAT 32"
-TEXT_OTHER	dc	"other"
+TEXT_FAT16	dc	"F16"
+TEXT_FAT32	dc	"F32"
+TEXT_OTHER	dc	"Oth"
 TEXT_PART_EMPTY	dc	"partittion empty"
 ;------------------------------
 ;------------------------------
