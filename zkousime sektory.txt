@@ -1,3 +1,27 @@
+nova specifikace VDT:
+- disk muze mit max 4 primarni partisny. Udaje o nich jsou v MBR v nultem sektoru disku.
+- budou dve VDT tabulky pro master a slave= 5x8= 40 bajtu= celkova delka VDT tabulky
+
+- struktura 1 zaznamu (z osmi) ve VDT tabulce:
+;offset	pocet	popis
+**********************
+;0	1	info bajt
+;1	4	first LBA sector of first MBD/MBH file on disk
+
+info bajt o oddilu rika:
+;bit 0		0= oddil neexistuje
+		1= oddil existuje
+;bit 1		1= platny oddil pro speccy (tj. obsahuje jako prvni MBD soubor, lze ho pouzit)
+		0= neplatny oddil pro speccy (tj. neobsahuje MBD soubor)
+;bit 2		0= pokud je bit 1 nulovy, pak tento bit nema vyznam, jinak 0= oddil se nepouziva, 1= oddil se pouziva*
+;bit 3		0= FAT16, 1=FAT32 (volitelne)
+;bity 4-7	rezervovane
+;*v BSDOSu muze soucasne fungovat jen jeden oddil
+
+
+
+
+
 boot sec	2048 dec
 root dir	2180 dec (adresar se soubory MBD)
 soubor		2216 dec (startovni sektor souboru MBD) (ze zacatku dava 2188/#88C)

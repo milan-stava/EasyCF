@@ -824,6 +824,8 @@ next
 		ld	a,4		;pocet partisen
 		ld	ix,BUFFER+446	;prvni partisna
 		ld	b,#0C	;radek (meni se pro kazdou partisnu)
+		ld	hl,VDT
+		ld	(VDT_pointer+1),hl
 
 test_partitions				;loop start
 		ld	c,2		;sloupec vzdy zaciname na 2 (posouva se spolu s tiskem)
@@ -853,6 +855,7 @@ test_partitions				;loop start
 ;	set	0,(ix-1)	;nastav priznak FAT32
 	ld	hl,fat_type
 	set	0,(hl)
+	ld	b,9		;bity 0,3=1= FAT32
 	ld	hl,TEXT_FAT32	;test typu oddilu, bud FAT16/32/other
 ;	ld	bc,#0c12
 	cp	#B		;pro typ oddilu FAT32
@@ -864,6 +867,7 @@ test_partitions				;loop start
 	res	0,(hl)
 ;	res	0,(ix-1)	;nastav priznak FAT16
 	ld	hl,TEXT_FAT16
+	ld	b,1		;bit 1=1, bit 3=0= FAT16
 	cp	6		;pro typ oddilu FAT16
 	jr	z,part_text
 	cp	4
@@ -872,8 +876,11 @@ test_partitions				;loop start
 	jr	z,part_text	
 
 	ld	hl,TEXT_OTHER
+	ld	b,0		;jde o partisnu jineho type nez FAT16/FAT32
 
 part_text
+	ld	a,b
+	ld	(VDT_pointer),a
 	pop	bc
 	call	T42_TEXT
 
@@ -882,8 +889,97 @@ part_text
 		ld	de,#AA55		;znacka platneho zaznamu MBR
 		or	a
 		sbc	hl,de
-		jr	z,load_boot
+		jr	z,load_boot	;Z=tabulka MBR je platna
 
+;disk nema MBR tabulku, pojdme zjistit, zda je v sekotru 0 boot sektor pro FAT16/FAT32
+;proverime, zda jde o superfloppy. Ale musi byt FAT16/32, jiank je neplatna.
+; IX = začátek sektoru LBA 0
+; Boot sektor začíná skokem EB nebo E9
+        ld      a,(ix+0)
+        cp      #EB
+        jr      z,check_bps
+        cp      #E9
+        jr      nz,not_boot
+
+check_bps:
+; BytesPerSector musí být 512 = #0200
+; little endian: 00 02
+        ld      a,(ix+11)
+        or      a
+        jr      nz,not_boot
+
+        ld      a,(ix+12)
+        cp      #02
+        jr      nz,not_boot
+
+; ReservedSectorCount nesmí být 0
+        ld      a,(ix+14)
+        or      (ix+15)
+        jr      z,not_boot
+
+; NumFATs nesmí být 0
+        ld      a,(ix+16)
+        or      a
+        jr      z,not_boot
+
+	inc	hx
+	inc	hx
+        ld      a,(ix-2)
+        cp      #55
+        jr      nz,not_boot
+
+        ld      a,(ix-1)
+        cp      #AA
+        jr      nz,not_boot
+
+;jde o platny boot sektor pro FAT, ted zjistit, zda jde o FAT16/FAT32
+;-------------------------------
+; Je to FAT32?
+;-------------------------------
+
+	ld	hl,VDT_pointer
+        ld      a,(ix+17)        ; RootEntCnt
+        or      (ix+18)
+        jr      nz,boot_f16
+
+        ld      a,(ix+22)        ; FATSz16
+        or      (ix+23)
+        jr      nz,boot_f16
+
+        ; obě hodnoty jsou 0
+        ; -> struktura BPB odpovídá FAT32
+
+        ld      a,(ix+36)
+        or      (ix+37)
+        or      (ix+38)
+        or      (ix+39)
+        jr      z,not_boot
+        ; FAT32
+
+
+boot_f32	ld	a,0+0+4+8	
+boot_f16	ld	a,0+0+4+0
+		ld	(hl),a		;nastav bity
+;tiskni, ze jde o Superfloppy
+		ld	hl,TEXT_SFL
+		call	T42_TEXT
+	jr	load_boot		;a pokracuj
+
+not_boot	pop	bc		;nejde ani o boot sektor, medium nema smysluplna data, konec
+		pop	ix
+		pop	af
+
+		ld	hl,VDT_pointer
+		ld	(hl),0		;info bajt=0
+
+		ld	hl,TEXT_NODATA
+		call	T42_TEXT
+		di
+		halt			;zatim
+;vytisknout, ze medium nema smylsuplna data a konec
+
+; pravděpodobně FAT Boot Sector
+/*stary test davame pryc
 		ld	hl,0		;jeste puvodni test MBR (puvodni EasyHdd)
 		ld	d,h
 		ld	e,h
@@ -893,6 +989,9 @@ part_text
 		ld	a,(ix+2)	;ale toto moc nechapu, pro se testuje CHS?
 		and	a
 		jr	z,MBRno
+*/
+
+
 
 load_boot	ld	l,(ix+8)
 		ld	h,(ix+9)	;nizsi
@@ -1078,6 +1177,10 @@ nextfile
 neplatne
 	add	ix,de
 	djnz	nextfile
+
+	ld	hl,TEXT_NODATA
+	pop	bc		;tiskova pozice
+	call	T42_TEXT	;tisk "No Data"= soubor MBD/MBH neni pritomen
 ;	ld	e,2		;;pokud nenajdu pouziji cluster 0
 	ld	hl,0
 	ld	d,h
@@ -1103,7 +1206,7 @@ platne	pop	bc		;tiskova pozice
 l1F	ld	a,#55		;pocet sektoru na cluster
 	call	MUL32x8		;vysledek v HLDE
 	exx
-	pop	bc		;tiskova pozice
+;	pop	bc		;tiskova pozice
 	pop	hl
 	pop	de		;HLDE=Root Dir FAT32/FAT16
 	push	bc		;tiskova pozice
@@ -1126,42 +1229,65 @@ RootEntCnt	ld	hl,#5555
 
 /*
 osetrit:
-- neni MBR- pak bude svitit jen jeden radek ve vyisu, a bude snaha datekovat FAT16/FAT32/other
-- partisna neni FAT16/FAT32- nech sviti napis oth a skoci se na detekci dalsi partisny
-- partisna je FAT16/FAT32, ale soubor se nenasel- pak necht sviti cervene No File.
+- DONE neni MBR- pak bude svitit jen jeden radek ve vyisu, a bude snaha datekovat FAT16/FAT32/other
+- DONE partisna neni FAT16/FAT32- nech sviti napis "oth" a skoci se na detekci dalsi partisny
+- DONE partisna je FAT16/FAT32, ale soubor se nenasel- pak necht sviti cervene No File.
+- nyni se automaticky vezme prvni partisna, do VDT, ale chceme tam dat user defined, tzn, pridat kurzor!!!
 
 Nasledne tyto 3 stavy se musi vepsat do VDT tabulky
 
 
-VDT bude jina nez stara:
-
 nova specifikace VDT:
-- dve VDT pro master a slave
-- kazda 4x info o partisne:
-;0	1	hodnota 1-4= 
-;1	1	info bajt
-;2	4	first LBA sector of first file on disk
+- disk muze mit max 4 primarni partisny. Udaje o nich jsou v MBR v nultem sektoru disku.
+- budou dve VDT tabulky pro master a slave= 5x32= 256 bajtu= celkova delka VDT tabulky
+
+- struktura 1 zaznamu (z osmi) ve VDT tabulce:
+;offset	pocet	popis
+**********************
+;0	1	info bajt
+;1	4	first LBA sector of first MBD/MBH file on disk
+;2	1	reserved
+;3	26	user defined text
 
 
 info bajt o oddilu rika:
-;bit 0		0= oddil neexistuje
-		1= oddil existuje
+;bit 0		0= oddil FAT16/32 jakozto MBR neexistuje
+		1= oddil FAT16/32 jakozto MBR existuje
 ;bit 1		1= platny oddil pro speccy (tj. obsahuje jako prvni MBD soubor, lze ho pouzit)
 		0= neplatny oddil pro speccy (tj. neobsahuje MBD soubor)
-;bit 2		0= FAT16, 1=FAT32 (volitelne)
-;bity 3-7	rezervovany
+;bit 2		0= pokud je bit 1 nulovy, pak 0=zadna smysluplna data nejsou na disku pritomna, 1=jde o disk FAT16/FAT32 bez MBR (bit 3 je pak platny). Pokud je bit 1 nenulovy, pak 0= oddil se nepouziva, 1= oddil se pouziva*
+;bit 3		0= FAT16, 1=FAT32 (volitelne)
+;bity 4-7	rezervovane
+;*v BSDOSu muze soucasne fungovat jen jeden oddil
 
 */
 
 end_partition
+
+		ld	b,h
+		ld	c,l		;dame HL do BC, abychomm mohli vyplnovat VDT tabulku
+
+VDT_pointer	ld	hl,#5555
+		inc	hl
+		ld	(hl),c
+		inc	hl
+		ld	(hl),b
+		inc	hl
+		ld	(hl),e
+		inc	hl
+		ld	(hl),d
+		ld	bc,26
+ep3		add	hl,bc
+		ld	(VDT_pointer+1),hl	;datove sektory jsou vepsany do tabulky, tabulka je pripravena na dalsi zapis
+		
 		pop	bc
 		pop	ix
 		pop	af
 
 		cp	4
-		jr	nz,ep2			;nejdo o prvni partisnu
-;zatim ulozime do VDT tabulky MBD image z prvni partisny, prechodne. V dalsich verzich bude volitelne.
+		jr	nz,ep2			;NZ= nejdo o prvni partisnu
 
+;zatim bude prvni partisna defaultni
 ;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
 		ld	c,a
 		ld	a,(@autoconfig)
@@ -1182,11 +1308,15 @@ ep1		jp	nz,test_partitions		;moc daleko, musim vymyslet jinak
 
 		jr	nemenfirstdatasectorm1
 
-no_partition	ld	b,#C
+no_partition	ld	b,#C			;nulovy zaznam v MBR
 		ld	c,1
 		ld	hl,TEXT_PART_EMPTY
 		call	T42_TEXT
-		jr	ep1
+		xor	a
+		ld	hl,VDT_pointer
+		ld	(hl),a		;nastav bity ve VDT k teto partisne na 0
+		ld	bc,31
+		jr	ep3
 
 ;stary kod-testuje jen prvni partisnu
 nemenfirstdatasectorm1
@@ -1815,7 +1945,9 @@ TEXT_PART_TYPE	dc	"Partition type:"
 TEXT_FAT16	dc	"F16"
 TEXT_FAT32	dc	"F32"
 TEXT_OTHER	dc	"Oth"
-TEXT_PART_EMPTY	dc	"partittion empty"
+TEXT_SFL	dc	"SFl"
+TEXT_NODATA	dc	"No Data"
+TEXT_PART_EMPTY	dc	"Partittion empty"
 ;------------------------------
 ;------------------------------
 T_X	equ	0
