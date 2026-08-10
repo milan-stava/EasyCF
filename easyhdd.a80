@@ -1,3 +1,5 @@
+;"osetreni stavu karty (neni MBR, partition je prazdny, oddil neni FAT, atd....implementace nove VDT tabulky, jeji format je ve zdroji GUI.a80- a eji vyplneni. Zbyva vybrat user defined partisnu, tj dodat kurzor, a taky doladit degault byte, jaka tabulka se ma sama vybrat ajko auto, aby uzivatel nemusel porad jezdit kurzorem"
+
 ;doma pushujeme 
 ;piseme: podpora 4 partisen. FAT16/FAT32
 
