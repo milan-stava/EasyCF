@@ -880,7 +880,8 @@ test_partitions				;loop start
 
 part_text
 	ld	a,b
-	ld	(VDT_pointer),a
+	ld	hl,VDT_pointer+1
+	ld	(hl),a
 	pop	bc
 	call	T42_TEXT
 
@@ -937,7 +938,7 @@ check_bps:
 ; Je to FAT32?
 ;-------------------------------
 
-	ld	hl,VDT_pointer
+	ld	hl,VDT_pointer+1
         ld      a,(ix+17)        ; RootEntCnt
         or      (ix+18)
         jr      nz,boot_f16
@@ -969,7 +970,7 @@ not_boot	pop	bc		;nejde ani o boot sektor, medium nema smysluplna data, konec
 		pop	ix
 		pop	af
 
-		ld	hl,VDT_pointer
+		ld	hl,VDT_pointer+1
 		ld	(hl),0		;info bajt=0
 
 		ld	hl,TEXT_NODATA
@@ -1206,7 +1207,7 @@ platne	pop	bc		;tiskova pozice
 l1F	ld	a,#55		;pocet sektoru na cluster
 	call	MUL32x8		;vysledek v HLDE
 	exx
-;	pop	bc		;tiskova pozice
+	pop	bc		;tiskova pozice
 	pop	hl
 	pop	de		;HLDE=Root Dir FAT32/FAT16
 	push	bc		;tiskova pozice
@@ -1263,6 +1264,17 @@ info bajt o oddilu rika:
 */
 
 end_partition
+;		cp	4
+;		jr	nz,ep2			;NZ= nejdo o prvni partisnu
+
+;zatim budou data ve vsech partisnach
+;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
+;		ld	c,a
+		ld	a,(@autoconfig)
+		or	a
+;		ld	a,c
+;		jr	z,nemenfirstdatasectorm1
+		jr	z,ep2
 
 		ld	b,h
 		ld	c,l		;dame HL do BC, abychomm mohli vyplnovat VDT tabulku
@@ -1279,28 +1291,18 @@ VDT_pointer	ld	hl,#5555
 		ld	bc,26
 ep3		add	hl,bc
 		ld	(VDT_pointer+1),hl	;datove sektory jsou vepsany do tabulky, tabulka je pripravena na dalsi zapis
-		
-		pop	bc
+
+;		ld	de,VDT+5
+;		ex	de,hl
+;		ld	(hl),e
+;		inc	hl
+;		ld	(hl),d
+
+ep2		pop	bc
 		pop	ix
 		pop	af
 
-		cp	4
-		jr	nz,ep2			;NZ= nejdo o prvni partisnu
-
-;zatim bude prvni partisna defaultni
-;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
-		ld	c,a
-		ld	a,(@autoconfig)
-		or	a
-		ld	a,c
-		jr	z,nemenfirstdatasectorm1
-		ld	de,VDT+5
-		ex	de,hl
-		ld	(hl),e
-		inc	hl
-		ld	(hl),d
-
-ep2		inc	b			;zvys poradovy radek
+		inc	b			;zvys poradovy radek
 		ld	de,16
 		add	ix,de			;move pointer to another partition
 		dec	a
@@ -1313,7 +1315,7 @@ no_partition	ld	b,#C			;nulovy zaznam v MBR
 		ld	hl,TEXT_PART_EMPTY
 		call	T42_TEXT
 		xor	a
-		ld	hl,VDT_pointer
+		ld	hl,VDT_pointer+1
 		ld	(hl),a		;nastav bity ve VDT k teto partisne na 0
 		ld	bc,31
 		jr	ep3
