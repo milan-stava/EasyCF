@@ -879,9 +879,11 @@ test_partitions				;loop start
 	ld	b,0		;jde o partisnu jineho type nez FAT16/FAT32
 
 part_text
+	push	hl
 	ld	a,b
 	ld	hl,VDT_pointer+1
 	ld	(hl),a
+	pop	hl
 	pop	bc
 	call	T42_TEXT
 
