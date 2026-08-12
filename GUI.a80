@@ -881,7 +881,7 @@ test_partitions				;loop start
 part_text
 	push	hl
 	ld	a,b
-	ld	hl,VDT_pointer+1
+	ld	hl,(VDT_pointer+1)
 	ld	(hl),a
 	pop	hl
 	pop	bc
@@ -940,7 +940,7 @@ check_bps:
 ; Je to FAT32?
 ;-------------------------------
 
-	ld	hl,VDT_pointer+1
+	ld	hl,(VDT_pointer+1)
         ld      a,(ix+17)        ; RootEntCnt
         or      (ix+18)
         jr      nz,boot_f16
@@ -972,7 +972,7 @@ not_boot	pop	bc		;nejde ani o boot sektor, medium nema smysluplna data, konec
 		pop	ix
 		pop	af
 
-		ld	hl,VDT_pointer+1
+		ld	hl,(VDT_pointer+1)
 		ld	(hl),0		;info bajt=0
 
 		ld	hl,TEXT_NODATA
@@ -1165,6 +1165,7 @@ lrd2		call	T42_TEXT	;vypis jeho cislo
 
 	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
 	ld	de,32		;; kazda polozka ma 32 bytes
+	ld	hl,(VDT_pointer)
 nextfile
 	ld	a,(ix+08h)
 	cp	"M"
@@ -1181,6 +1182,8 @@ neplatne
 	add	ix,de
 	djnz	nextfile
 
+	res	1,(hl)		;nastav priznak, ze jde o nepouzitelny oddil, nema MBD soubor
+
 	ld	hl,TEXT_NODATA
 	pop	bc		;tiskova pozice
 	call	T42_TEXT	;tisk "No Data"= soubor MBD/MBH neni pritomen
@@ -1193,7 +1196,8 @@ neplatne
 
 ;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
 
-platne	pop	bc		;tiskova pozice
+platne	set	1,(hl)
+	pop	bc		;tiskova pozice
 	push	ix
 	pop	hl
 	set	7,(ix+10)
@@ -1256,8 +1260,8 @@ nova specifikace VDT:
 info bajt o oddilu rika:
 ;bit 0		0= oddil FAT16/32 jakozto MBR neexistuje
 		1= oddil FAT16/32 jakozto MBR existuje
-;bit 1		1= platny oddil pro speccy (tj. obsahuje jako prvni MBD soubor, lze ho pouzit)
-		0= neplatny oddil pro speccy (tj. neobsahuje MBD soubor)
+;bit 1		1= pouzitelny oddil pro speccy (tj. obsahuje jako prvni MBD soubor, lze ho pouzit)
+		0= nepouzitelny oddil pro speccy (tj. neobsahuje MBD soubor)
 ;bit 2		0= pokud je bit 1 nulovy, pak 0=zadna smysluplna data nejsou na disku pritomna, 1=jde o disk FAT16/FAT32 bez MBR (bit 3 je pak platny). Pokud je bit 1 nenulovy, pak 0= oddil se nepouziva, 1= oddil se pouziva*
 ;bit 3		0= FAT16, 1=FAT32 (volitelne)
 ;bity 4-7	rezervovane
@@ -1290,7 +1294,7 @@ VDT_pointer	ld	hl,#5555
 		ld	(hl),e
 		inc	hl
 		ld	(hl),d
-		ld	bc,26
+		ld	bc,28
 ep3		add	hl,bc
 		ld	(VDT_pointer+1),hl	;datove sektory jsou vepsany do tabulky, tabulka je pripravena na dalsi zapis
 
@@ -1317,7 +1321,7 @@ no_partition	ld	b,#C			;nulovy zaznam v MBR
 		ld	hl,TEXT_PART_EMPTY
 		call	T42_TEXT
 		xor	a
-		ld	hl,VDT_pointer+1
+		ld	hl,(VDT_pointer+1)
 		ld	(hl),a		;nastav bity ve VDT k teto partisne na 0
 		ld	bc,31
 		jr	ep3
