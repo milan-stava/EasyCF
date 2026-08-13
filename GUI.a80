@@ -1126,7 +1126,9 @@ bootsec1	ld	de,#5555	;vyssi
 		call	ADD32_32
 					;HLDE=root dir pro FAT32
 
-load_root_dir	pop	bc		;tiskova pozice, nechame ji venku, nic ji neposkozuje
+load_root_dir	
+/*toto je spatne, tohle cislo nechceme tisknout, budeme tisknout soubor do tretiho sloupce
+		pop	bc		;tiskova pozice, nechame ji venku, nic ji neposkozuje
 		push	hl
 		push	de		;dame to bokem
 
@@ -1153,10 +1155,18 @@ lrd2		call	T42_TEXT	;vypis jeho cislo
 		pop	hl
 		pop	de		;HLDE=Root Dir FAT32/FAT16
 ;uschovame ho, bude ještě potřeba, je to start DIRs sektoru pro FAT16, nebo start datovch sektoru pro FAT32
+
 		push	hl		
 		push	de
 
 		push	bc		;tiskova pozice
+
+*/
+		pop	bc
+		ex	de,hl
+		push	hl
+		push	de
+		push	bc		;BC=tiskova pozice
 
 ;	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
@@ -1164,7 +1174,7 @@ lrd2		call	T42_TEXT	;vypis jeho cislo
 
 	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
 	ld	de,32		;; kazda polozka ma 32 bytes
-	ld	hl,(VDT_pointer)
+	ld	hl,(VDT_pointer+1)
 nextfile
 	ld	a,(ix+08h)
 	cp	"M"
@@ -1284,6 +1294,40 @@ end_partition
 		ld	b,h
 		ld	c,l		;dame HL do BC, abychomm mohli vyplnovat VDT tabulku
 
+		ld	hl,(VDT_pointer+1)	;zjistime, zda se nasel MBD soubor
+		bit	1,(hl)
+		jr	z,ep2			;Z=neobashuje MBD soubor
+
+		ld	h,b
+		ld	l,c
+
+		pop	bc		;BC=tiskova pozice
+						;obsahuje, tak vypiseme na obrazovku jeho cislo
+		push	hl
+		push	de			;BCDE= prvni sektor MBD souboru
+
+		ld	(zzbin),hl	;nejprve tisk
+		ld	(zzbin+2),de
+
+		call	HL2ASCII32
+		ld	hl,zzdec+9
+		set	7,(hl)
+		ld	hl,zzdec
+;		ld	bc,#0B1B
+;		pop	bc
+lrd1		ld	a,(hl)
+		or	a
+		jr	nz,lrd2
+		inc	hl
+		inc	c
+		jr	lrd1
+
+
+lrd2		call	T42_TEXT	;vypis jeho cislo
+
+		pop	de
+		pop	bc			;BCDE=prvni sektor MBD souboru		
+
 VDT_pointer	ld	hl,#5555
 		inc	hl
 		ld	(hl),c
@@ -1303,7 +1347,7 @@ ep3		add	hl,bc
 ;		inc	hl
 ;		ld	(hl),d
 
-ep2		pop	bc
+ep2		pop	bc			;BC=tiskova pozice
 		pop	ix
 		pop	af
 
@@ -1927,7 +1971,8 @@ TEXT100	dc	16,67,"Press any key to install"
 TEXT102	db	16,70,"Capacity: "
 	dc	16,69,"     MB"
 TEXTPARSEC
-	db	16,70,"Par  1stParSec  1stDatSec 1stFile"
+;	db	16,70,"Par  1stParSec  1stDatSec 1stFile"
+	db	16,70,"Par  1stParSec 1stFile     1stDatSec"
 	dc	16,69," "
 
 ;TEXTDATASEC
