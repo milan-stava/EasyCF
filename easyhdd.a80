@@ -87,7 +87,7 @@ START
 @autoinstall	db	0		;auto install (/wait for any key)
 @autoconfig	db	1		;1=auto configure (automatic search for first sector & set hdd parameters to VDT)
 ;new parameter for EasySD. If set to 0, selection will be done manually.
-@partition	db	1		;if @autoconfi=1, use values 1-4 (for SD0), 5-8 (for SD1), use partition. If not usable, use the first available from start
+@partition	db	4		;if @autoconfi=1, use values 1-4 (for SD0), 5-8 (for SD1), use partition. If not usable, use the first available from start
 @showsplash	db	0		;show splash screen
 @playnoise	db	0		;playnoise
 		db	1		;show gui
@@ -416,9 +416,41 @@ dmano
 ; Az nyni preneseme pracovni VDT na zarovnanou adresu za SD rutinami.
 		ld	hl,VDT
 		ld	de,SDroutines.BSDOS_VDT
+		push	de
 		ld	bc,VDTLEN
 		ldir
 
+
+		ld	a,(@partition)		;umistime vybrany 1. sektor do rutiny TST_DRV
+		dec	a			;zatim jen podle zaznamu v autoconfigu, ale chce to inteligentnejsi vyber
+
+		ld	l,a
+		ld	h,0
+
+    		add     hl,hl            ; *2
+        	add     hl,hl            ; *4
+	        add     hl,hl            ; *8
+        	add     hl,hl            ; *16
+	        add     hl,hl            ; *32
+
+		pop	de
+        	add     hl,de            ; HL = adresa vybraneho 32B zaznamu
+		inc	hl		;jsme na LBA sektoru
+
+        ld      c,(hl)          ; LBA byte 0
+        inc     hl
+        ld      b,(hl)          ; LBA byte 1
+        inc     hl
+
+        ld      (current_1st_sector+1),bc
+
+        ld      c,(hl)          ; LBA byte 2
+        inc     hl
+        ld      b,(hl)          ; LBA byte 3
+
+        ld      (current_1st_sector+4),bc	;ulozili jsme vybrane LBA primo do rutiny TST_DRV
+
+		
 ;mezera na PIT103
 ;a pokracujeme s rutinami obsluhy SD karty
 
@@ -1402,12 +1434,14 @@ TST_DRV
 ;;		bit	7,d		;test master/slave
 ;;		jr	nz,slave
 
-master		ld	hl,TAB_DRV+1	;VDT tabulka					
+
+/*
+;master		ld	hl,TAB_DRV+1	;VDT tabulka					
 		ld	a,(hl)
 		or	a
 		ret	z		;master disk neexistuje, testuje se pocest sectoru disku uvedeneho v VDT
 		push	hl		;VDT tabulka
-
+*/
 ;		ld	a,%11100000
 ;		ld	(HEA_RD1+1),a	;davame pryc zatim, pro SD verzi
 ;		ld	(HEA_WR1+1),a	;nastaveni master	;davame pryc zatim, pro SD verzi
@@ -1423,7 +1457,7 @@ master		ld	hl,TAB_DRV+1	;VDT tabulka
 		call	MUL32x8
 					;DEHL= vysledek
 		exx
-
+/*
 ;		ld	hl,VDT+1	;zatim to bereme z prvni partisny, vyresit
 ;		inc	hl
 		pop	hl
@@ -1436,6 +1470,11 @@ master		ld	hl,TAB_DRV+1	;VDT tabulka
 		ld	d,(hl)
 		ld	l,c
 		ld	h,b
+*/
+current_1st_sector			;dulezite, tady je aktualne vybrana partisna/1 datovy sektor
+		ld	hl,#5555	;nizsi LBA
+		ld	de,#5555	;vyssi LBA
+
 		call	ADD32_32
 		ld	(LOW24+1),hl
 		ld	(HIG24+1),de
