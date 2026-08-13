@@ -74,18 +74,20 @@
 
 	DEVICE ZXSPECTRUM48
 
+		include "math_macros.a80"
+
 
 		org	32768
 START
 		call	GUI.gui
-		jp	INSTALL
+		jp	MAIN.INSTALL
 
 ;virtual (floppy)disk table
 ;General settings
 @autoinstall	db	0		;auto install (/wait for any key)
-@autoconfig	db	1		;auto configure (automatic search for first sector & set hdd parameters to VDT)
-;new parameter for EasySD
-@partition	db	1		;values 1-4 (for SD0), 5-8 (for SD1), use partition. If not usable, use the first available from start
+@autoconfig	db	1		;1=auto configure (automatic search for first sector & set hdd parameters to VDT)
+;new parameter for EasySD. If set to 0, selection will be done manually.
+@partition	db	1		;if @autoconfi=1, use values 1-4 (for SD0), 5-8 (for SD1), use partition. If not usable, use the first available from start
 @showsplash	db	0		;show splash screen
 @playnoise	db	0		;playnoise
 		db	1		;show gui
@@ -109,8 +111,10 @@ VDT		db	32,16		;Sectors/Heads
 VDTLEN		equ 	$-VDT
 */
 VDTLEN		equ	256
-		org	align
+;		org	align		; "align" neni definovane navesti - puvodni radek docasne vypnut
 
+HDD_MAIN_START		equ	#0090		;zacatek hlavniho EasySD driveru v HDD bance
+PIT_START		equ	#0383		;odtud zacina oblast prepisovana PIT patchem
 SD_ROUTINES_START	equ	#F00		;SD routines start here- due to collision with PIT103 patch
 
 ;porty HOOD
@@ -149,6 +153,13 @@ DMA		equ	11
 ;;;;;;;;;;;;;;;;;;;;;
 ; Instalace driveru ;
 ;;;;;;;;;;;;;;;;;;;;;
+	module	MAIN
+
+; VDT kopie pro bezici BSDOS bude fyzicky v RAM az za SD rutinami.
+; Adresa SDroutines.BSDOS_VDT je dopocitana assemblerem automaticky.
+TAB		equ	SDroutines.BSDOS_VDT
+TAB_DRV		equ	SDroutines.BSDOS_VDT
+
 INSTALL		di
 
 ;;presun fontu do HDD banky
@@ -157,11 +168,8 @@ INSTALL		di
 		ld	bc,768
 		ldir
 
-		ld	hl,VDT
-		ld	de,TAB
-		ld	bc,VDTLEN
-		ldir
-
+; VDT se sem uz NEkopiruje.
+; Cilem je adresa v HDD/patch bance, ktera bude pripojena az pozdeji.
 	call #3c9c
 	ld hl,zamek	;ver 1.18
 	ld de,#3cE8
@@ -378,7 +386,7 @@ verifyyes
 		ld	(#1B7),a
 dmano
 		ld	hl,SEM
-		ld	de,144
+		ld	de,HDD_MAIN_START
 		ld	bc,112
 		ldir
 
@@ -402,6 +410,13 @@ dmano
 
 		ld	de,SD_ROUTINES_START
 		ld	bc,LEN_SD
+		ldir
+
+; Ted je stale pripojena HDD/patch banka (98).
+; Az nyni preneseme pracovni VDT na zarovnanou adresu za SD rutinami.
+		ld	hl,VDT
+		ld	de,SDroutines.BSDOS_VDT
+		ld	bc,VDTLEN
 		ldir
 
 ;mezera na PIT103
@@ -692,13 +707,15 @@ SEM1     	;equ	$-ADR144D+SEM
 
 ;adresa 144 v hdd_bnk
 
+;tabulku musime presouvat jinam, protoze leze do kodu PITa
+/*
 KKK
 		jp	PRESKOC
 
 TAB		equ	$-KKK+SEM1
 TAB_DRV
 		block	VDTLEN
-
+*/
 ;; obsluha sluzeb bsdosu
 PRESKOC
 		push	hl
@@ -1385,11 +1402,11 @@ TST_DRV
 ;;		bit	7,d		;test master/slave
 ;;		jr	nz,slave
 
-master		ld	hl,TAB_DRV
-					
+master		ld	hl,TAB_DRV+1	;VDT tabulka					
 		ld	a,(hl)
 		or	a
 		ret	z		;master disk neexistuje, testuje se pocest sectoru disku uvedeneho v VDT
+		push	hl		;VDT tabulka
 
 ;		ld	a,%11100000
 ;		ld	(HEA_RD1+1),a	;davame pryc zatim, pro SD verzi
@@ -1399,6 +1416,34 @@ master		ld	hl,TAB_DRV
 ;		ld (WR_PROT+1),a ; nastaveni WriteProtect, end 1.16
 					
 		ld	a,d
+		dec	a		;snizime, abychom se dostali na spravny disk. Zaciname diskem 1.
+
+		ld	de,0
+		ld	hl,4096		;4096x512=delka jednoho MBD image
+		call	MUL32x8
+					;DEHL= vysledek
+		exx
+
+;		ld	hl,VDT+1	;zatim to bereme z prvni partisny, vyresit
+;		inc	hl
+		pop	hl
+		ld	c,(hl)
+		inc	hl
+		ld	b,(hl)
+		inc	hl
+		ld	e,(hl)
+		inc	hl
+		ld	d,(hl)
+		ld	l,c
+		ld	h,b
+		call	ADD32_32
+		ld	(LOW24+1),hl
+		ld	(HIG24+1),de
+		xor	a		;set NZ
+		inc	a
+		ret
+
+/*piseme pro EasySD- pro 32 bajtove pocitani
 ;		dec	a		;dulezite, temito dvema dec a snizujeme disky od 1
 ;		dec	a
 		dec	a		;odecteme 3 protoze HDD jednotky zacinaji az od 3
@@ -1435,6 +1480,8 @@ master		ld	hl,TAB_DRV
 		or	l
 ; jeste test jestli lde<>0, je v podstate zbytecny, ale musi byt nz
 		ret
+*/
+
 /*
 ;slave rusime, bude jen 1 karta, zatim
 ; ted to same pro slave
@@ -1490,16 +1537,40 @@ slave		ld	hl,TAB_DRV+(VDTLEN/2)
 		ret
 konec ruseni slave*/
 
-LEN_MAIN	equ	$-144
+;------------------------------------------------------------------------------
+; Matematicke rutiny - fyzicka kopie pro hlavni cast EasySD (MODULE MAIN)
+;------------------------------------------------------------------------------
+MUL32x8:
+	MATH_MUL32x8
+
+ADD32_16:
+	MATH_ADD32_16
+
+SUB32_8:
+	MATH_SUB32_8
+
+ADD32_32:
+	MATH_ADD32_32
+
+LEN_MAIN	equ	$-HDD_MAIN_START
+	ASSERT	HDD_MAIN_START+LEN_MAIN <= PIT_START
 		
 		ent
 
+	endmodule	; MAIN
 
 
 		disp	SD_ROUTINES_START			;musime dat na adresu #F00- nize to koliduje s PIT103
 	module	SDroutines
 ;	include "main_sd_rw.asm"			;SD rutiny pro drajver v BSDOSu
 	include "main_sd_rw_bsdos.asm"
+
+; Pracovni 256B VDT pro BSDOS:
+; pouze EQU - nevklada zadnou vypln do binarky.
+; Zarovnani na nejblizsi dalsi adresu xx00 za skutecnym koncem SD rutin.
+BSDOS_VDT	equ	($+#FF)&$FF00
+	ASSERT	(BSDOS_VDT & #FF) == 0
+
 	endmodule
 LEN_SD		equ	$-SD_ROUTINES_START
 
@@ -1507,17 +1578,23 @@ LEN_SD		equ	$-SD_ROUTINES_START
 
 ;LEN		equ	$-144			;posun kvuli PITovi
 
-END1		equ	$-KKK+SEM1
+
+; TAB/TAB_DRV uz zde zadne bajty negeneruji.
+; Pracovni VDT je v RAM na SDroutines.BSDOS_VDT.
+
+;END1		equ	$-MAIN.KKK+MAIN.SEM1
+END1		equ	$-MAIN.PRESKOC+MAIN.SEM1
 
 ;		ent
 
 		include "GUI.a80"
 
 
-		org	#FF00
+	ALIGN	256
 VDT		ds	256,0			;VDT tabulka bude 256 bajtu (8 zaznamu po 32 bajtech)
 
 endfile
+
 patchLEN	equ 	$-START
 
 		savesna "EasySD.sna",START

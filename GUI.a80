@@ -1,4 +1,3 @@
-		include "maths.a80"
 ;		include	"nasobeniHLDE.a80"
 ;		include	"draw.a80"
 		include	"draw-jugo.a80"
@@ -3118,6 +3117,21 @@ zvukpause
 	pop	bc
 	djnz	zvukloop
 	ret
+
+;------------------------------------------------------------------------------
+; Matematicke rutiny - fyzicka kopie pro GUI (MODULE GUI)
+;------------------------------------------------------------------------------
+MUL32x8:
+	MATH_MUL32x8
+
+ADD32_16:
+	MATH_ADD32_16
+
+SUB32_8:
+	MATH_SUB32_8
+
+ADD32_32:
+	MATH_ADD32_32
 
 	include "sd_rw.asm"	;SD card init, read, write
 

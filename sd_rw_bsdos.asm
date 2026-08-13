@@ -490,7 +490,7 @@ dma_set
    otir	;tento otir funguje, ale neumi nahravat do dos banky
 	ld a,97
 	ld b,#87		;poslendi bajt z DMA sekvence
-	call	OTIR		;prestrankuj do dos banky a tam spust DMA prenos
+	call	MAIN.OTIR		;prestrankuj do dos banky a tam spust DMA prenos
     reti
 ;
 dma_cmd
