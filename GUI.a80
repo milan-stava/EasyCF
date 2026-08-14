@@ -1381,10 +1381,9 @@ nemenfirstdatasectorm1
 ;nacteni MBR
 	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
-	ld	bc,0
-	ld	de,0		;HLDE=HL=high, DE=low; was BCDE
-;;;	ld	hl,0		;LBA=0 MBR
-	call	LBAREAD
+	ld	hl,0
+	ld	de,0		;HLDE = LBA 0
+	call	SD_READ
 ; dodelat osetreni erroru
 	inc	hx
 	inc	hx		;+512
@@ -1433,13 +1432,9 @@ MBRno	ex	de,hl		;v hl je cislo sectoru kde zacina boot prvni par.
 	call	NUMBER3
 ;nacteni BOOT sectoru prvni partition
 	pop	hl
-	ld	c,l
-	ld	e,h
-	ld	d,0
-	ld	b,d
+	ld	de,0		;HLDE = 32bit LBA, zde hornich 16 bitu = 0
 	ld	ix,BUFFER
-;;;	ld	a,%00000000 ;master
-	call	LBAREAD
+	call	SD_READ
 ; dodelat osetreni erroru
 ; vypocet datove oblasti prvniho souboru
 
@@ -1478,13 +1473,9 @@ part_c	call	nasobeniHLDE.nasob	;vysledek v IXHL
 	push	hl
 	push	bc
 	;;nacteni Root Directory sectoru
-	ld	c,l
-	ld	e,h
-	ld	d,0
-	ld	b,d
+	ld	de,0		;HLDE = 32bit LBA, zde hornich 16 bitu = 0
 	ld	ix,BUFFER
-;;;	ld	a,%00000000	;master
-	call	LBAREAD
+	call	SD_READ
 
 	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
 	ld	de,32		;; kazda polozka ma 32 bytes
@@ -2972,17 +2963,8 @@ ACCMODE0
 	ret
 */
 
-;fyzicke cteni jednoho LBA sectoru
-;ix=adresa, a=mod adresace bit4=master/slave
-;cedb= 28 bit lba sector;c-sectornumber,e-cylinderlow,d-cylinderhigh,b-head
-LBAREAD
-;LBA sector number- musime predelat z "cedb" na "edlh", pro ucely cteni SD karty
-	ld	h,b
-	ld	l,d
-	ld	d,e
-	ld	e,c
-	call	SD_READ
-	ret			;later change to JP only.... call is for tetsing purposes	
+; Fyzicke cteni LBA sektoru se nyni vola primo pres SD_READ.
+; Vstup SD_READ: HL = horni 16 bitu LBA, DE = dolni 16 bitu LBA, IX = buffer.
 
 /* old IDE (CF card) part, replaced by SD card routines
 	or	%11100000

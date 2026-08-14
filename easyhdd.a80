@@ -978,24 +978,19 @@ HIG24		ld	de,0
 ;c - sektor 207
 ;de - cyl  e - 211, d -215
 PREP2
-		ld	b,d
-		ld	d,e
-		ld	e,h
-		ld	c,l
+		ex	de,hl
+; vystup primo pro SD rutiny:
+; HL = horni 16 bitu LBA, DE = dolni 16 bitu LBA
 		ret
 
 ; fyzicke cteni sectoru
 READ1				;cteni sektoru z SD karty
-	push	hl
-	pop	ix
-;	push	hl		;adresa zapisu
-	ld	(rea1+1),hl
-	ld	h,b
-	ld	l,d
-	ld	d,e
-	ld	e,c
-	push	hl		;horni reg
-	push	de		;dolni reg
+; vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA
+	push	ix
+	pop	bc
+	ld	(rea1+1),bc
+	push	hl		;horni 16 bitu LBA
+	push	de		;dolni 16 bitu LBA
 	call	@SDroutines.SD_READ	;1x 512 bytes
 rea1	ld	hl,#5555
 	ld	bc,512
@@ -1065,15 +1060,12 @@ HEA_RD1		or	%11100000
 ;------------------------------
 ; fyzicky zapis sectoru
 WRITE1
-	push	hl
-	pop	ix
-	ld	(wri1+1),hl
-	ld	h,b		;prepis registru pro zapis na SD
-	ld	l,d
-	ld	d,e
-	ld	e,c
-	push	hl		;horni reg
-	push	de		;dolni reg
+; vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA
+	push	ix
+	pop	bc
+	ld	(wri1+1),bc
+	push	hl		;horni 16 bitu LBA
+	push	de		;dolni 16 bitu LBA
 	call	@SDroutines.SD_WRITE
 wri1	ld	hl,#5555
 	ld	bc,512
@@ -1196,11 +1188,13 @@ RD_SEC2
 		ret	nz
 
 ; pricte pozadovany pocet LBA sektoru
+; HL je adresa bufferu, proto ji dame rovnou do IX.
+; PREP_LBA pak vrati LBA primo jako HLDE pro SD_READ.
+		push	ix
 		push	hl
+		pop	ix
 		call	PREP_LBA
-		pop	hl
 ; cte
-		push	ix		;puhse a popy tu byt nemohou? osetrit!!!!
 		call	READ1
 		pop	ix
 	or a		;ver 1.17
@@ -1238,11 +1232,12 @@ WR_PROT 	ld	a,0
 		call	SECT_NUM
 		ret	nz
 
+; HL je adresa bufferu -> IX, PREP_LBA vrati LBA primo jako HLDE
+		push	ix
 		push	hl
+		pop	ix
 		call	PREP_LBA
-		pop	hl
 
-		push	ix	;mozna bude delat problem ty pushe a popy!!!!
 		call	WRITE1
 		pop	ix
 
