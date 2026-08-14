@@ -1323,10 +1323,15 @@ lrd1		ld	a,(hl)
 		jr	lrd1
 
 
-lrd2		call	T42_TEXT	;vypis jeho cislo
+lrd2		inc	c		;jeste posun, aby cislo nebylo nalepeno na predchozi text, pokud bude cislo 10 mist
+		call	T42_TEXT	;vypis jeho cislo
 
 		pop	de
-		pop	bc			;BCDE=prvni sektor MBD souboru		
+		pop	hl			;HLDE=prvni sektor MBD souboru
+
+		push	bc		;schovej tiskovou pozici
+		ld	c,l
+		ld	b,h		
 
 VDT_pointer	ld	hl,#5555
 		inc	hl
@@ -1883,20 +1888,28 @@ Slaveinentify
 ;*/
 */
 	ld	hl,TEXT17
-	ld	bc,#1102
+	ld	bc,#1402
 	call	T42_TEXT
+	inc	c
+	inc	c
 	ld	hl,TEXT18
-	ld	bc,#1203
+;	ld	bc,#1203
 	call	T42_TEXT
+	inc	c
 	ld	hl,TEXT19
-	ld	bc,#1303
+;	ld	bc,#1303
 	call	T42_TEXT
 
 Endinentify
 
 	ld	hl,TEXT100
-	ld	bc,#1608
+	ld	bc,#1602
 	call	T42_TEXT
+
+	ld	a,(@partition)
+	ld	h,0
+	ld	l,a
+	call	NUMBER0
 
 	ld	a,(@autoinstall)
 	or	a
@@ -1965,14 +1978,14 @@ TEXT_CLR
 	db	"               "
 	dc	"         "
 
-TEXT100	dc	16,67,"Press any key to install"
+TEXT100	dc	16,67,"Press a key to install to partition "
 ;TEXT101	dc	16,70,"C/H/S:"
 ;TEXT101	dc	"Permanent WP:      Temporal WP:"
 TEXT102	db	16,70,"Capacity: "
 	dc	16,69,"     MB"
 TEXTPARSEC
 ;	db	16,70,"Par  1stParSec  1stDatSec 1stFile"
-	db	16,70,"Par  1stParSec 1stFile     1stDatSec"
+	db	16,70,"Par  1stParSec 1st_MBDFile 1stDatSec"
 	dc	16,69," "
 
 ;TEXTDATASEC
@@ -1996,10 +2009,10 @@ TEXT_20		dc	"2.0"
 TEXT_PART_TYPE	dc	"Partition type:"
 TEXT_FAT16	dc	"F16"
 TEXT_FAT32	dc	"F32"
-TEXT_OTHER	dc	"Oth"
+TEXT_OTHER	dc	16,66,"Oth"
 TEXT_SFL	dc	"SFl"
-TEXT_NODATA	dc	"No Data"
-TEXT_PART_EMPTY	dc	"Partittion empty"
+TEXT_NODATA	dc	16,66,"No Data"
+TEXT_PART_EMPTY	dc	16,66,"Partittion empty"
 ;------------------------------
 ;------------------------------
 T_X	equ	0
