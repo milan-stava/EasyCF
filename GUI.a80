@@ -10,7 +10,6 @@ eightbc_i	incbin	"8BC_I.cde"
 ;EasyLogoSmall	incbin	"EasyLogoSmall.bin"
 EasyLogoSmall	incbin	"ehSDnewlogo.cde"
 ;		include "lbaread.a80"	;vlozeno primo do kodu GUI
-		include	"main_sd_rw.asm"	;SD card main routine
 ;		include "sd_rw.asm"	;SD card init, read, write---dame to dozadu
 zvuk		incbin	"ZVUK.BIN"
 zvukend
@@ -29,6 +28,8 @@ zvukend
 
 
 	module	GUI
+
+	SD_DRIVER 0
 
 zvukcmp equ	60000		;adresa zkopilovaneho zvuku
 
@@ -3191,6 +3192,5 @@ SUB32_8:
 ADD32_32:
 	MATH_ADD32_32
 
-	include "sd_rw.asm"	;SD card init, read, write
 
 	endmodule

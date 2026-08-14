@@ -75,6 +75,7 @@
 	DEVICE ZXSPECTRUM48
 
 		include "math_macros.a80"
+		include "sd_macros.a80"
 
 
 		org	32768
@@ -995,7 +996,7 @@ READ1				;cteni sektoru z SD karty
 	ld	e,c
 	push	hl		;horni reg
 	push	de		;dolni reg
-	call	SDroutines.SD_READ_BSDOS	;1x 512 bytes
+	call	@SDroutines.SD_READ	;1x 512 bytes
 rea1	ld	hl,#5555
 	ld	bc,512
 	add	hl,bc
@@ -1008,7 +1009,7 @@ rea1	ld	hl,#5555
 	or	e
 	jr	nz,rea2
 	inc	hl
-rea2	call	SDroutines.SD_READ_BSDOS	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
+rea2	call	@SDroutines.SD_READ	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
 	xor	a
 	ret			;later change to JP only.... call is for tetsing purposes	
 
@@ -1073,7 +1074,7 @@ WRITE1
 	ld	e,c
 	push	hl		;horni reg
 	push	de		;dolni reg
-	call	SDroutines.SD_WRITE_BSDOS
+	call	@SDroutines.SD_WRITE
 wri1	ld	hl,#5555
 	ld	bc,512
 	add	hl,bc
@@ -1086,7 +1087,7 @@ wri1	ld	hl,#5555
 	or	e
 	jr	nz,wri2
 	inc	hl
-wri2	call	SDroutines.SD_WRITE_BSDOS	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
+wri2	call	@SDroutines.SD_WRITE	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
 	xor	a
 	ret			;later change to JP only.... call is for tetsing purposes	
 
@@ -1601,8 +1602,7 @@ LEN_MAIN	equ	$-HDD_MAIN_START
 
 		disp	SD_ROUTINES_START			;musime dat na adresu #F00- nize to koliduje s PIT103
 	module	SDroutines
-;	include "main_sd_rw.asm"			;SD rutiny pro drajver v BSDOSu
-	include "main_sd_rw_bsdos.asm"
+	SD_DRIVER 1
 
 ; Pracovni 256B VDT pro BSDOS:
 ; pouze EQU - nevklada zadnou vypln do binarky.
