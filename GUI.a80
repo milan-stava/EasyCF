@@ -1945,6 +1945,73 @@ ayn	call	z,ANYKEY
 	ret
 ; navrat
 
+;user menu
+;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
+;definice
+unmark_cursor	equ 56		;not marked item with cursor
+unmark_no_curs	equ 7		;not marked item without cursor
+
+page		equ 3		;we will move around 4 items
+cursor_w_stadr	dw #5981	;start address of cursor
+cursor_w_curad	dw #5981	;current address of cursor
+cursor_len	equ 29
+wind_curs_item	db #55		;current start cursor position of the window (0-page)
+;item_pg_start	dw #5555	;;;;;start address of first dir item on displayed page
+
+		xor	a	;inicializace
+		ld	(wind_curs_item),a
+		ld	hl,(cursor_w_stadr)
+		ld	(cursor_w_curad),hl
+		call	draw_cursor
+;main key routine
+		ld	de,32
+iik		call	IINKEY
+		jr	z,iik		;Z=no key pressed
+		cp	#B
+		call	z,key_up
+		cp	#A
+		call	z,key_down
+		cp	13
+		call	z,key_enter
+		jr	iik
+
+key_up		ld	hl,wind_curs_item
+		ld	a,(hl)
+		or	a
+		ret	z		;Z=already first line
+		dec	(hl)
+		call	undraw_cursor
+		ld	hl,(cursor_w_curad)
+		or	a
+		sbc	hl,de
+		ld	(cursor_w_curad),hl
+		call	draw_cursor
+		ret
+
+key_down	ld	hl,wind_curs_item
+		ld	a,(hl)
+		cp	page
+		ret	z
+		inc	(hl)
+		call	undraw_cursor
+		ld	hl,(cursor_w_curad)
+		add	hl,de
+		ld	(cursor_w_curad),hl
+		call	draw_cursor
+		ret
+key_enter
+
+undraw_cursor	ld	a,unmark_no_curs
+		jr	dc_1
+draw_cursor	ld	a,unmark_cursor
+dc_1		ld	hl,(cursor_w_curad)
+		ld	b,cursor_len
+dc_2		ld	(hl),a
+		inc	hl
+		djnz	dc_2
+		xor	a			;A=0 to avoid artifical key press
+		ret
+
 ;------------------------------
 TEXT1	dc	16,70,"EasySD 0.8 for MB03+"
 TEXT2	dc	16,3,127," MB03+ team 2026"
