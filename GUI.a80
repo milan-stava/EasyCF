@@ -1879,7 +1879,7 @@ Slaveinentify
 ;vyruseni SLAVE
 ;*/
 */
-	ld	hl,TEXT17
+	ld	hl,TEXT17		;DMA info
 	ld	bc,#1402
 	call	T42_TEXT
 	inc	c
@@ -1893,19 +1893,55 @@ Slaveinentify
 	call	T42_TEXT
 
 Endinentify
+	ld	de,32
+	ld	a,(@partition)
+	ld	b,a
+	ld	hl,VDT-32
+loop1	add	hl,de
+	djnz	loop1
+	bit	1,(hl)
+	jr	nz,fp1			;NZ=set partition (from autoconfig or manual) is valid
+					;Z=invalid, seek for valid one
+	ld	hl,VDT
+	ld	a,1
+	ld	b,4
+find_valid:
+        bit	1,(hl)
+        jr      nz,found_partition
+	add	hl,de
+	inc	a
+        djnz    find_valid
 
-	ld	hl,TEXT100
+;žádná platná partition. Co s tim? Vynulujeme VDT tabulku a partisn nechame, protoze pak se do VDT tabulky vepise 0
+	ld	hl,VDT
+	ld	de,VDT+1
+	ld	bc,255
+	ld	(hl),l
+	ldir
+
+vp1	ld	hl,TEXT_NO_VALID
+	ld	bc,#1602
+	call	T42_TEXT
+	xor	a
+	jr	ayn
+  
+found_partition
+	ld	(@partition),a		;dame ji do configu, odtud si ji pak vezme hlavni prog v konfig casti bsdosu
+
+fp1	ld	hl,TEXT100
 	ld	bc,#1602
 	call	T42_TEXT
 
+valid_partition
 	ld	a,(@partition)
 	ld	h,0
 	ld	l,a
 	call	NUMBER0
 
+autoinstall_yes_no
 	ld	a,(@autoinstall)
 	or	a
-	call	z,ANYKEY
+ayn	call	z,ANYKEY
 	ret
 ; navrat
 
@@ -2005,6 +2041,7 @@ TEXT_OTHER	dc	16,66,"Oth"
 TEXT_SFL	dc	"SFl"
 TEXT_NODATA	dc	16,66,"No Data"
 TEXT_PART_EMPTY	dc	16,66,"Partittion empty"
+TEXT_NO_VALID	dc	16,66,"No valid partition found, press a key"
 ;------------------------------
 ;------------------------------
 T_X	equ	0
