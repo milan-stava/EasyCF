@@ -1286,6 +1286,7 @@ end_partition
 ;		cp	4
 ;		jr	nz,ep2			;NZ= nejdo o prvni partisnu
 
+/*
 ;zatim budou data ve vsech partisnach
 ;pokud je General setting nastavena autoconfigurace, tak ulozi vypocteny prvni datovy sector
 ;		ld	c,a
@@ -1294,6 +1295,8 @@ end_partition
 ;		ld	a,c
 ;		jr	z,nemenfirstdatasectorm1
 		jr	z,ep2
+;davame to pryc, koncepce autoconfigu bude jina, bude auto, nebo manualne
+*/
 
 		ld	b,h
 		ld	c,l		;dame HL do BC, abychomm mohli vyplnovat VDT tabulku
@@ -1896,24 +1899,23 @@ Slaveinentify
 	call	T42_TEXT
 
 Endinentify
-	ld	de,32
+;projed partisny, zda jsou vsechny platne
+	call	check_for_valid
+	jr	z,end_easy
+
+	ld	a,(@autoconfig)
+	or	a
+	jp	nz,manual_partition_selection
+
+;automatic_partition_selection
 	ld	a,(@partition)
-	ld	b,a
-	ld	hl,VDT-32
-loop1	add	hl,de
-	djnz	loop1
-	bit	1,(hl)
-	jr	nz,fp1			;NZ=set partition (from autoconfig or manual) is valid
-					;Z=invalid, seek for valid one
-	ld	hl,VDT
-	ld	a,1
-	ld	b,4
-find_valid:
-        bit	1,(hl)
-        jr      nz,found_partition
-	add	hl,de
-	inc	a
-        djnz    find_valid
+	call	test_partition		;test just selected partition
+	jr	nz, fp1
+
+;Z=invalid, seek for valid one
+;neni platna, hledej prvni platnou a nainstluj  ji
+	call	check_for_valid
+	jr	nz,found_partition
 
 ;žádná platná partition. Co s tim? Vynulujeme VDT tabulku a partisn nechame, protoze pak se do VDT tabulky vepise 0
 	ld	hl,VDT
@@ -1921,18 +1923,23 @@ find_valid:
 	ld	bc,255
 	ld	(hl),l
 	ldir
-
+	jr	end_easy		;nenasli jsme platnou partisnu
+/*
 vp1	ld	hl,TEXT_NO_VALID
 	ld	bc,#1602
 	call	T42_TEXT
 	xor	a
 	jr	ayn
+*/
   
 found_partition
 	ld	(@partition),a		;dame ji do configu, odtud si ji pak vezme hlavni prog v konfig casti bsdosu
 
-fp1	ld	hl,TEXT100
+fp1	ld	hl,TEXT_CLR
 	ld	bc,#1602
+	call	T42_TEXT
+	ld	hl,TEXT100
+	ld	bc,#1607
 	call	T42_TEXT
 
 valid_partition
@@ -1948,6 +1955,38 @@ ayn	call	z,ANYKEY
 	ret
 ; navrat
 
+test_partition				;IN=A=partition number 1-4, OUT=Z=invalid partition, NZ=valid
+	ld	de,32			;testuj zvolenou partisnu (v @partition), zda je platna
+;	ld	a,(@partition)
+	ld	b,a
+	ld	hl,VDT-32
+loop1	add	hl,de
+	djnz	loop1
+	bit	1,(hl)
+	ret
+;	jr	nz,fp1			;NZ=set partition (from autoconfig or manual) is valid
+
+;IN=noothing, OUT=NZ=valid, Z=invalid
+check_for_valid
+	ld	hl,VDT		
+	ld	a,1
+	ld	b,4
+find_valid:
+        bit	1,(hl)
+	ret	nz 
+;       jr      nz,found_partition
+	add	hl,de
+	inc	a
+        djnz    find_valid
+	ret
+
+end_easy
+	ld	hl,TEXT_NO_VALID
+	ld	bc,#1602
+	call	T42_TEXT
+	pop	hl		;navratova adresa
+	ret			;navrat do BASICu
+
 ;user menu
 ;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
 ;definice
@@ -1961,22 +2000,39 @@ cursor_len	equ 29
 wind_curs_item	db #55		;current start cursor position of the window (0-page)
 ;item_pg_start	dw #5555	;;;;;start address of first dir item on displayed page
 
+key_enter	ld	a,(@partition)
+		call	test_partition
+		jr	nz,found_partition	;NZ=we found the valid one
+
+		ld	hl,TEXT_PART_NOUSE
+		ld	bc,#1602
+		push	bc
+		call	T42_TEXT
+
+		ld	hl,TEXT_CLR
+		pop	bc
+		call	T42_TEXT
+
+manual_partition_selection
+		ld	hl,TEXT_MAKE_SELEC
+		ld	bc,#1602
+		call	T42_TEXT
 		xor	a	;inicializace
 		ld	(wind_curs_item),a
 		ld	hl,(cursor_w_stadr)
 		ld	(cursor_w_curad),hl
 		call	draw_cursor
 ;main key routine
-;		ld	de,32
 iik		call	KEYSCAN
-;		jr	z,iik		;Z=no key pressed
 		ld	de,32
 		cp	#B
 		call	z,key_up
 		cp	#A
 		call	z,key_down
 		cp	13
-		call	z,key_enter
+		jr	z,key_enter
+		cp	7
+		jr	z,end_easy		;EDIT pressed, end EasySD
 		jr	iik
 
 key_up		ld	hl,wind_curs_item
@@ -2003,7 +2059,6 @@ key_down	ld	hl,wind_curs_item
 		ld	(cursor_w_curad),hl
 		call	draw_cursor
 		ret
-key_enter
 
 undraw_cursor	ld	hl,(cursor_w_curad)
 		ld	a,(hl)
@@ -2094,7 +2149,8 @@ TEXT_CLR
 	db	"               "
 	dc	"         "
 
-TEXT100	dc	16,67,"Press a key to install to partition "
+;TEXT100	dc	16,67,"Press a key to install to partition "
+TEXT100		dc	16,67,"Installed to partition "
 ;TEXT101	dc	16,70,"C/H/S:"
 ;TEXT101	dc	"Permanent WP:      Temporal WP:"
 TEXT102	db	16,70,"Capacity: "
@@ -2130,6 +2186,8 @@ TEXT_SFL	dc	"SFl"
 TEXT_NODATA	dc	16,66,"No Data"
 TEXT_PART_EMPTY	dc	16,66,"Partittion empty"
 TEXT_NO_VALID	dc	16,66,"No valid partition found, press a key"
+TEXT_PART_NOUSE	dc	16,66,"Partition not usable"
+TEXT_MAKE_SELEC	dc	16,67,"Make selection. Press <EDIT> to exit"
 ;------------------------------
 ;------------------------------
 T_X	equ	0
@@ -2965,7 +3023,9 @@ T42_SADA
 	defw	34984
 	defw	112
 
-ANYKEY	jp	KEYSCAN
+ANYKEY	call	KEYSCAN
+	jr	z,ANYKEY
+	ret
 
 	include	inkey.a80
 
