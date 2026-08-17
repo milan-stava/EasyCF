@@ -1,3 +1,6 @@
+;dokumentace k FAT- bomba
+;https://elm-chan.org/docs/fat_e.html
+
 ;		include	"nasobeniHLDE.a80"
 ;		include	"draw.a80"
 		include	"draw-jugo.a80"
@@ -1948,8 +1951,8 @@ ayn	call	z,ANYKEY
 ;user menu
 ;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
 ;definice
-unmark_cursor	equ 56		;not marked item with cursor
-unmark_no_curs	equ 7		;not marked item without cursor
+cursor		equ %00001000		;item with cursor (dark blue cursor)
+no_curs		equ %11110111		;item without cursor
 
 page		equ 3		;we will move around 4 items
 cursor_w_stadr	dw #5981	;start address of cursor
@@ -2001,6 +2004,23 @@ key_down	ld	hl,wind_curs_item
 		ret
 key_enter
 
+undraw_cursor	ld	hl,(cursor_w_curad)
+		ld	a,(hl)
+		and	no_curs
+;		and	%11110111
+		jr	dc_1
+draw_cursor	ld	hl,(cursor_w_curad)
+		ld	a,(hl)
+;		or	%00001000
+		or	cursor
+
+dc_1		ld	b,cursor_len
+dc_2		ld	(hl),a
+		inc	hl
+		djnz	dc_2
+		xor	a			;A=0 to avoid artifical key press
+		ret
+/*
 undraw_cursor	ld	a,unmark_no_curs
 		jr	dc_1
 draw_cursor	ld	a,unmark_cursor
@@ -2011,7 +2031,7 @@ dc_2		ld	(hl),a
 		djnz	dc_2
 		xor	a			;A=0 to avoid artifical key press
 		ret
-
+*/
 ;------------------------------
 TEXT1	dc	16,70,"EasySD 0.8 for MB03+"
 TEXT2	dc	16,3,127," MB03+ team 2026"
