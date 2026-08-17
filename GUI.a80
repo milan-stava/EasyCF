@@ -1939,7 +1939,7 @@ fp1	ld	hl,TEXT_CLR
 	ld	bc,#1602
 	call	T42_TEXT
 	ld	hl,TEXT100
-	ld	bc,#1607
+	ld	bc,#1608
 	call	T42_TEXT
 
 valid_partition
@@ -2000,22 +2000,31 @@ cursor_len	equ 29
 wind_curs_item	db #55		;current start cursor position of the window (0-page)
 ;item_pg_start	dw #5555	;;;;;start address of first dir item on displayed page
 
-key_enter	ld	a,(@partition)
+key_enter	ld	a,(wind_curs_item)
+		inc	a
 		call	test_partition
 		jr	nz,found_partition	;NZ=we found the valid one
 
-		ld	hl,TEXT_PART_NOUSE
+		ld	hl,TEXT_CLR
 		ld	bc,#1602
 		push	bc
 		call	T42_TEXT
+
+		ld	hl,TEXT_PART_NOUSE
+		ld	bc,#1605
+		call	T42_TEXT
+
+		call	ANYKEY
 
 		ld	hl,TEXT_CLR
 		pop	bc
 		call	T42_TEXT
 
+		call	undraw_cursor
+
 manual_partition_selection
 		ld	hl,TEXT_MAKE_SELEC
-		ld	bc,#1602
+		ld	bc,#1603
 		call	T42_TEXT
 		xor	a	;inicializace
 		ld	(wind_curs_item),a
@@ -2157,7 +2166,7 @@ TEXT102	db	16,70,"Capacity: "
 	dc	16,69,"     MB"
 TEXTPARSEC
 ;	db	16,70,"Par  1stParSec  1stDatSec 1stFile"
-	db	16,70,"Par  1stParSec 1st_MBDFile 1stDatSec"
+	db	16,70,"Par  1stParSec 1st_MBDFile  1stDatSec"
 	dc	16,69," "
 
 ;TEXTDATASEC
@@ -2186,8 +2195,9 @@ TEXT_SFL	dc	"SFl"
 TEXT_NODATA	dc	16,66,"No Data"
 TEXT_PART_EMPTY	dc	16,66,"Partittion empty"
 TEXT_NO_VALID	dc	16,66,"No valid partition found, press a key"
-TEXT_PART_NOUSE	dc	16,66,"Partition not usable"
-TEXT_MAKE_SELEC	dc	16,67,"Make selection. Press <EDIT> to exit"
+TEXT_PART_NOUSE	dc	16,66,"Partition not usable, try again"
+;TEXT_MAKE_SELEC	dc	16,67,"Make selection. Press <EDIT> to exit"
+TEXT_MAKE_SELEC	dc	16,67,"Press ENTER to select, EDIT to exit"
 ;------------------------------
 ;------------------------------
 T_X	equ	0
