@@ -11,6 +11,11 @@
 ;prizrak ZERO sa nastavi podla nulovosti registra A
 ;*/
 
+lastkey     db 0
+otherkey    db 0
+keysound    db 0
+BORDER      db 0
+
 ;pro volani klavesnice pouzivame call KEYSCAN
 KEYSCAN
 return_key			;first press, returns NZ, next presses Z, no return if no key pressed

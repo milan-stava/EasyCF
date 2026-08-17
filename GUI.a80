@@ -1967,9 +1967,10 @@ wind_curs_item	db #55		;current start cursor position of the window (0-page)
 		ld	(cursor_w_curad),hl
 		call	draw_cursor
 ;main key routine
+;		ld	de,32
+iik		call	KEYSCAN
+;		jr	z,iik		;Z=no key pressed
 		ld	de,32
-iik		call	IINKEY
-		jr	z,iik		;Z=no key pressed
 		cp	#B
 		call	z,key_up
 		cp	#A
@@ -2963,6 +2964,12 @@ T42_SADA
 	defw	51368
 	defw	34984
 	defw	112
+
+ANYKEY	jp	KEYSCAN
+
+	include	inkey.a80
+
+/*LMNho rutinu davame pryc, neumi autorepeat, bude nahrazena tou od Busyho
 ;------------------------------
 ANYKEY	call	IINKEY
 	jr	z,ANYKEY
@@ -3062,6 +3069,7 @@ IISS	defb	0,16,#1E
 	defb	125 ;}
 	defb	#1D
 	defb	":`?/"
+*/
 
 ;------------------------------
 /* also not needed for SD cards
