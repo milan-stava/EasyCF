@@ -1238,6 +1238,25 @@ neplatne
 	pop	bc		;tiskova pozice
 	call	T42_TEXT	;tisk "No Data"= soubor MBD/MBH neni pritomen
 
+	; Cely radek teto partition obarvime cervene.
+	; B obsahuje cislo aktualniho textoveho radku.
+	; Atributova oblast ZX zacina na #5800, polozky menu od sloupce 1.
+	push	bc
+	ld	a,b
+	ld	hl,#5801
+	ld	de,32
+	ld	b,a
+no_data_red_seek
+	add	hl,de
+	djnz	no_data_red_seek
+	ld	b,cursor_len	; stejne dlouhy radek jako kurzor (29 atributu)
+	ld	a,66		; bright red ink, black paper
+no_data_red_fill
+	ld	(hl),a
+	inc	hl
+	djnz	no_data_red_fill
+	pop	bc
+
 	; MBD/MBH se nenasel. Na zasobniku jsou jeste dve 16bitove
 	; poloviny ulozeneho RootDir LBA. Pres l1F uz nesmime pokracovat,
 	; protoze l1F ocekava na vrcholu zasobniku znovu BC a pocita LBA
@@ -1430,7 +1449,7 @@ no_partition	;ld	b,#C			;nulovy zaznam v MBR
 		xor	a
 		ld	hl,(VDT_pointer+1)
 		ld	(hl),a		;nastav bity ve VDT k teto partisne na 0
-		ld	bc,31
+		ld	bc,32			; VDT zaznam ma 32 bajtu; HL je zde na offsetu 0
 		jr	ep3
 
 ;stary kod-testuje jen prvni partisnu
@@ -2020,6 +2039,7 @@ loop1	add	hl,de
 
 ;IN=noothing, OUT=NZ=valid, Z=invalid
 check_for_valid
+	ld	de,32			; kazdy VDT zaznam ma presne 32 bajtu
 	ld	hl,VDT		
 	ld	a,1
 	ld	b,4
@@ -2244,11 +2264,11 @@ TEXT_CSD	dc	"CSD:"
 TEXT_10		dc	"1.0"
 TEXT_20		dc	"2.0"
 TEXT_PART_TYPE	dc	"Partition type:"
-TEXT_FAT16	dc	"F16"
-TEXT_FAT32	dc	"F32"
+TEXT_FAT16	dc	16,69,"F16"		; platna FAT partition vzdy cyan
+TEXT_FAT32	dc	16,69,"F32"		; platna FAT partition vzdy cyan
 TEXT_OTHER	dc	16,66,"Other"		;muzeme si dovolit delsi text, bude na radku sam
-TEXT_SFL16	dc	"SFl_F16"
-TEXT_SFL32	dc	"SFl_F32"
+TEXT_SFL16	dc	16,69,"SFl_F16"	; superfloppy FAT16 cyan
+TEXT_SFL32	dc	16,69,"SFl_F32"	; superfloppy FAT32 cyan
 TEXT_NODATA	dc	16,66,"No Data"
 TEXT_PART_EMPTY	dc	16,66,"Partittion empty"
 TEXT_NO_VALID	dc	16,66,"No valid partition found, press a key"
