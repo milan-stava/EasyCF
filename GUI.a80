@@ -947,7 +947,7 @@ sf_text_ready
 
 		ld	hl,0			;Boot sector superfloppy je absolutni LBA 0
 		ld	de,0
-		jr	MBRno
+		jp	MBRno
 
 not_superfloppy
 ;LBA 0 neni FAT boot sektor, muzeme ho interpretovat jako MBR.
@@ -963,9 +963,9 @@ not_superfloppy
 	ld	hl,TEXT_FAT32	;test typu oddilu, bud FAT16/32/other
 ;	ld	bc,#0c12
 	cp	#B		;pro typ oddilu FAT32
-	jr	z,part_text
+	jp	z,part_text
 	cp	#C
-	jr	z,part_text
+	jp	z,part_text
 
 	ld	hl,fat_type
 	res	0,(hl)
@@ -973,14 +973,93 @@ not_superfloppy
 	ld	hl,TEXT_FAT16
 	ld	b,1		;bit 1=1, bit 3=0= FAT16
 	cp	6		;pro typ oddilu FAT16
-	jr	z,part_text
+	jp	z,part_text
 	cp	4
-	jr	z,part_text
+	jp	z,part_text
 	cp	#E
-	jr	z,part_text	
+	jp	z,part_text	
 
+; Nepodporovane filesystemy se pokusime pojmenovat.
+; VDT info zustava 0, takze jsou stale pro EasySD nepouzitelne.
+	cp	#05			; Extended partition (CHS)
+	jp	z,part_extended
+	cp	#0F			; Extended partition (LBA)
+	jp	z,part_extended
+	cp	#07			; HPFS/NTFS/exFAT - rozlisime z boot sektoru
+	jp	z,part_type_07
+	cp	#83			; Linux native (ext2/ext3/ext4...)
+	jp	z,part_linux
+	cp	#EE			; GPT protective MBR
+	jp	z,part_gpt
+
+part_other
 	ld	hl,TEXT_OTHER
-	ld	b,0		;jde o partisnu jineho type nez FAT16/FAT32
+	ld	b,0
+	jr	part_text
+
+part_linux
+	ld	hl,TEXT_LINUX
+	ld	b,0
+	jr	part_text
+
+part_extended
+	ld	hl,TEXT_EXTENDED
+	ld	b,0
+	jr	part_text
+
+part_gpt
+	ld	hl,TEXT_GPT
+	ld	b,0
+	jr	part_text
+
+; MBR type #07 je spolecny pro NTFS i exFAT.
+; Nacteme pouze boot sektor teto partition do BUFFER2, abychom neprepsali MBR v BUFFERu.
+; OEM ID je od offsetu +3: "NTFS    " nebo "EXFAT   ".
+part_type_07
+	push	ix
+	; SD_READ expects HL=upper 16 bits LBA, DE=lower 16 bits LBA
+	ld	e,(ix+8)
+	ld	d,(ix+9)
+	ld	l,(ix+10)
+	ld	h,(ix+11)
+	ld	ix,BUFFER2
+	call	SD_READ
+	pop	ix
+
+	ld	a,(BUFFER2+3)
+	cp	'N'
+	jr	nz,part_check_exfat
+	ld	a,(BUFFER2+4)
+	cp	'T'
+	jr	nz,part_check_exfat
+	ld	a,(BUFFER2+5)
+	cp	'F'
+	jr	nz,part_check_exfat
+	ld	a,(BUFFER2+6)
+	cp	'S'
+	jr	nz,part_check_exfat
+	ld	hl,TEXT_NTFS
+	ld	b,0
+	jr	part_text
+
+part_check_exfat
+	ld	a,(BUFFER2+3)
+	cp	'E'
+	jr	nz,part_other
+	ld	a,(BUFFER2+4)
+	cp	'X'
+	jr	nz,part_other
+	ld	a,(BUFFER2+5)
+	cp	'F'
+	jr	nz,part_other
+	ld	a,(BUFFER2+6)
+	cp	'A'
+	jr	nz,part_other
+	ld	a,(BUFFER2+7)
+	cp	'T'
+	jr	nz,part_other
+	ld	hl,TEXT_EXFAT
+	ld	b,0
 
 part_text
 	push	hl
@@ -2287,6 +2366,11 @@ TEXT_20		dc	"2.0"
 TEXT_PART_TYPE	dc	"Partition type:"
 TEXT_FAT16	dc	16,69,"F16"		; platna FAT partition vzdy cyan
 TEXT_FAT32	dc	16,69,"F32"		; platna FAT partition vzdy cyan
+TEXT_NTFS	dc	16,66,"NTFS"
+TEXT_EXFAT	dc	16,66,"exFAT"
+TEXT_LINUX	dc	16,66,"Linux"
+TEXT_GPT	dc	16,66,"GPT"
+TEXT_EXTENDED	dc	16,66,"Extended"
 TEXT_OTHER	dc	16,66,"Other"		;muzeme si dovolit delsi text, bude na radku sam
 TEXT_SFL16	dc	16,69,"SFl_F16"	; superfloppy FAT16 cyan
 TEXT_SFL32	dc	16,69,"SFl_F32"	; superfloppy FAT32 cyan
