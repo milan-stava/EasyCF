@@ -991,6 +991,21 @@ part_text
 	pop	bc
 	call	T42_TEXT
 
+; Pokud je typ partition OTHER, zde zpracovani konci.
+; Info bajt VDT je 0, tedy partition je pro EasySD nepouzitelna.
+; Nesmime pokracovat do load_boot, jinak bychom cizí filesystem
+; (NTFS/exFAT/...) interpretovali jako FAT a poskodili i zarovnani VDT.
+	push	bc			;tiskova pozice pro ep2
+	ld	hl,(VDT_pointer+1)
+	ld	a,(hl)
+	or	a
+	jr	nz,partition_is_fat
+	ld	bc,32			;preskoc cely VDT zaznam OTHER
+	jp	ep3
+
+partition_is_fat
+	pop	bc			;FAT cesta ma BC dale mimo stack jako dosud
+
 					;ted hledame boot sektor pro dany oddil
 		ld	hl,(BUFFER2-2)
 		ld	de,#AA55		;znacka platneho zaznamu MBR
@@ -1265,7 +1280,13 @@ no_data_red_fill
 	pop	de		;zahod ulozene DE RootDir LBA
 	pop	hl		;zahod ulozene HL RootDir LBA
 	push	bc		;ep2 bude znovu delat POP BC
-	jr	end_partition
+
+	; No Data je stale jeden kompletni 32B VDT zaznam.
+	; Musime posunout VDT_pointer na nasledujici partition, jinak
+	; se dalsi platna partition zapise do stejneho VDT zaznamu.
+	ld	hl,(VDT_pointer+1)
+	ld	bc,32
+	jp	ep3
 
 
 ;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
