@@ -1110,6 +1110,13 @@ lb1_f16		ld	a,(ix+16)	;pocet FAT tabulek
 bootsec		ld	hl,#5555	;nizsi
 bootsec1	ld	de,#5555	;vyssi
 		call	ADD32_32	;vysledek je v HLDE
+
+;uschovej absolutni zacatek datove oblasti. U FAT32 se RootDir muze nachazet
+;v jinem clusteru nez 2, proto se pozdeji MBD musi pocitat od FirstDataLBA,
+;nikoli od RootDirLBA.
+		ld	(FirstDataLBA),hl
+		ld	(FirstDataLBA+2),de
+
 ;hotovo pro FAT16. HLDE= root dir pro FAT16
 
 
@@ -1225,22 +1232,30 @@ platne	set	1,(hl)
 
 l1F	ld	a,#55		;pocet sektoru na cluster
 	call	MUL32x8		;vysledek v HLDE
-	exx
+	exx				;offset souboru presun do alternativnich registru
 	pop	bc		;tiskova pozice
 	pop	hl
 	pop	de		;HLDE=Root Dir FAT32/FAT16
 	push	bc		;tiskova pozice
+
+	; V tomto miste uz IX ukazuje na adresarovou polozku MBD, proto nelze
+	; testovat FAT typ pres (ix+0). Pouzij globalni priznak fat_type.
+	ld	a,(fat_type)
+	bit	0,a
+	jr	z,l1F_fat16
+
+	; FAT32: zakladem pro prevod clusteru souboru je FirstDataLBA,
+	; nikoli RootDirLBA (RootClus nemusi byt 2).
+	ld	hl,(FirstDataLBA)
+	ld	de,(FirstDataLBA+2)
 	call	ADD32_32
+	jr	end_partition
 
-				;HLDE´prvni sektor image MBD/MBH pro FAT16:)
-;pricitame RootDirsSectors (neboli RootEntCnt)- oznacuje pocet polozek v RootDirs sektoru
-;nasobime *32
-;pouze u FAT16
+				;FAT16: k RootDirLBA nejprve pricteme offset souboru
+l1F_fat16	call	ADD32_32
 
-		bit	0,(ix+0)
-		jr	nz,end_partition
-
-		exx
+				;pak jeste velikost pevneho Root Directory
+	exx
 
 RootEntCnt	ld	hl,#5555
 		call	ADD32_32
@@ -3333,6 +3348,7 @@ D1LBA	defw	0,0,0
 D2LBA	defw	0,0,0
 LEN	equ	$-32768
 
+FirstDataLBA	dw	0,0		;absolutni LBA zacatku datove oblasti
 fat_type	db	#55		;bit 0=Z=FAT16, bit 0=NZ=FAT32
 
 BUFFER	;equ	25000
