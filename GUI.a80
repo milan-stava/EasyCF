@@ -847,8 +847,8 @@ test_partitions				;loop start
 		push	ix
 		push	bc		
 
-		ld	a,#C
-		ld	(no_partition+1),a	;init print pozice
+;		ld	a,#C
+;		ld	(no_partition+1),a	;init print pozice
 
 ;MBR je v bufferu	
 		ld	a,(ix+4)		;test, zda je partisna vubec pritomna
@@ -1371,8 +1371,10 @@ ep1		jp	nz,test_partitions		;moc daleko, musim vymyslet jinak
 
 		jr	nemenfirstdatasectorm1
 
-no_partition	ld	b,#C			;nulovy zaznam v MBR
-		ld	c,1
+no_partition	;ld	b,#C			;nulovy zaznam v MBR
+		;ld	c,1
+		pop	bc			;tiskova pozice
+		push	bc			;tiskova pozice- znovu ji ulozime
 		ld	hl,TEXT_PART_EMPTY
 		call	T42_TEXT
 		xor	a
