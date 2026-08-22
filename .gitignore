@@ -19,3 +19,9 @@ Desktop.ini
 
 #image
 test images/SD_raw/
+
+# TAP build outputs
+*.tap
+
+# Temporary branch comparison files
+*_MAIN.a80
