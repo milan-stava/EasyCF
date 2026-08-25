@@ -1291,10 +1291,12 @@ bootsec1	ld	de,#5555	;vyssi
 ;udaje potrebne pro robustni prohledani FAT32 root directory
 		ld	a,(ix+13)
 		ld	(FAT32_SecPerClus),a
-		ld	hl,(ix+44)
-		ld	(FAT32_RootCluster),hl
-		ld	hl,(ix+46)
-		ld	(FAT32_RootCluster+2),hl
+		ld	l,(ix+44)
+		ld	h,(ix+45)
+		ld	(FAT32_CurCluster),hl
+		ld	l,(ix+46)
+		ld	h,(ix+47)
+		ld	(FAT32_CurCluster+2),hl
 
 ;FirstFATLBA = PartitionStartLBA + ReservedSectors
 		ld	hl,(bootsec+1)
@@ -1469,45 +1471,19 @@ FAT32_FIND_LOWEST_MBD
 	ld	(FAT32_BestCluster),hl
 	ld	(FAT32_BestCluster+2),hl
 
-	ld	hl,(FAT32_RootCluster)
-	ld	(FAT32_CurCluster),hl
-	ld	hl,(FAT32_RootCluster+2)
-	ld	(FAT32_CurCluster+2),hl
-
 .f32_cluster_loop
 	; DirLBA = FirstDataLBA + (CurCluster-2) * SecPerClus
+	; Pouzij existujici 32bit math rutiny; pouze platne Z80 instrukce.
 	ld	hl,(FAT32_CurCluster)
 	ld	de,(FAT32_CurCluster+2)
-
-	; cluster -= 2
-	ld	bc,2
-	or	a
-	sbc	hl,bc
-	jr	nc,.f32_sub_ok
-	dec	de
-.f32_sub_ok
-
-	; SecPerClus je dle FAT specifikace mocnina 2: 1,2,4,...128.
+	ld	a,2
+	call	SUB32_8
 	ld	a,(FAT32_SecPerClus)
-.f32_mul_loop
-	cp	1
-	jr	z,.f32_mul_done
-	add	hl,hl
-	rl	e
-	rl	d
-	srl	a
-	jr	.f32_mul_loop
-.f32_mul_done
-
-	; + FirstDataLBA
-	ld	bc,(FirstDataLBA)
-	add	hl,bc
-	push	hl
-	ex	de,hl
-	ld	bc,(FirstDataLBA+2)
-	adc	hl,bc
-	ex	de,hl
-	pop	hl
+	call	MUL32x8
+	exx
+	ld	hl,(FirstDataLBA)
+	ld	de,(FirstDataLBA+2)
+	call	ADD32_32
 
 	ld	(FAT32_DirLBA),hl
 	ld	(FAT32_DirLBA+2),de
@@ -1571,33 +1547,18 @@ FAT32_FIND_LOWEST_MBD
 
 .f32_compare
 	; unsigned 32bit: DEHL < BestCluster ?
-	ld	a,d
-	ld	c,a
-	ld	a,(FAT32_BestCluster+3)
-	cp	c
-	jr	c,.f32_next_entry
-	jr	nz,.f32_new_best
-
-	ld	a,e
-	ld	c,a
-	ld	a,(FAT32_BestCluster+2)
-	cp	c
-	jr	c,.f32_next_entry
-	jr	nz,.f32_new_best
-
-	ld	a,h
-	ld	c,a
-	ld	a,(FAT32_BestCluster+1)
-	cp	c
-	jr	c,.f32_next_entry
-	jr	nz,.f32_new_best
-
-	ld	a,l
-	ld	c,a
-	ld	a,(FAT32_BestCluster)
-	cp	c
-	jr	c,.f32_next_entry
-	jr	z,.f32_next_entry
+	; candidate-Best, carry z horniho slova znamena candidate < Best.
+	push	de
+	push	hl
+	ld	bc,(FAT32_BestCluster)
+	or	a
+	sbc	hl,bc
+	ex	de,hl
+	ld	bc,(FAT32_BestCluster+2)
+	sbc	hl,bc
+	pop	hl
+	pop	de
+	jr	nc,.f32_next_entry
 
 .f32_new_best
 	ld	(FAT32_BestCluster),hl
@@ -1620,15 +1581,17 @@ FAT32_FIND_LOWEST_MBD
 	jp	nz,.f32_entry_loop
 
 	; dalsi sektor stejneho root clusteru
-	ld	hl,(FAT32_DirLBA)
-	inc	hl
-	ld	(FAT32_DirLBA),hl
-	ld	a,h			; INC HL na Z80 NEMENI flags!
-	or	l			; high word zvys jen pri preteceni FFFF->0000
+	ld	hl,FAT32_DirLBA
+	inc	(hl)
 	jr	nz,.f32_lba_inc_done
-	ld	hl,(FAT32_DirLBA+2)
 	inc	hl
-	ld	(FAT32_DirLBA+2),hl
+	inc	(hl)
+	jr	nz,.f32_lba_inc_done
+	inc	hl
+	inc	(hl)
+	jr	nz,.f32_lba_inc_done
+	inc	hl
+	inc	(hl)
 .f32_lba_inc_done
 
 	ld	a,(FAT32_SectorsLeft)
@@ -1637,34 +1600,34 @@ FAT32_FIND_LOWEST_MBD
 	jp	nz,.f32_sector_loop
 
 	; Nacti FAT entry pro aktualni root cluster.
-	; FAT32: 128 zaznamu po 4B v jednom 512B sektoru.
-	ld	hl,(FAT32_CurCluster)
-	ld	de,(FAT32_CurCluster+2)
-	ld	b,7
-.f32_div128
-	srl	d
-	rr	e
-	rr	h
-	rr	l
-	djnz	.f32_div128
+	; FAT32 ma 128 zaznamu/sektor => FAT sector = cluster >> 7.
+	; CurCluster je little-endian 32bit; FAT32 pouziva jen 28 bitu.
+	ld	a,(FAT32_CurCluster)
+	ld	h,a
+	ld	a,(FAT32_CurCluster+1)
+	ld	l,a
+	ld	a,(FAT32_CurCluster+2)
+	ld	e,a
+	ld	d,0
+	add	hl,hl
+	rl	e
+	rl	d
+	ld	h,l
+	ld	l,e
+	ld	e,d
+	ld	d,0
 
-	; + FirstFATLBA
+	; DEHL = cluster>>7; pricteme absolutni LBA prvni FAT.
 	ld	bc,(FAT32_FirstFATLBA)
 	add	hl,bc
-	push	hl
 	ex	de,hl
 	ld	bc,(FAT32_FirstFATLBA+2)
 	adc	hl,bc
 	ex	de,hl
-	pop	hl
 
-	push	hl
-	push	de
 	ex	de,hl			; SD_READ: HL=upper, DE=lower
 	ld	ix,BUFFER2
 	call	SD_READ
-	pop	de
-	pop	hl
 
 	; offset v FAT sektoru = (cluster & 127)*4
 	ld	a,(FAT32_CurCluster)
@@ -3905,7 +3868,6 @@ FirstDataLBA	dw	0,0		;absolutni LBA zacatku datove oblasti
 
 ;pracovni data pro FAT32 root-chain hledani fyzicky prvniho MBD/MBH
 FAT32_FirstFATLBA	dw	0,0
-FAT32_RootCluster	dw	0,0
 FAT32_CurCluster	dw	0,0
 FAT32_DirLBA		dw	0,0
 FAT32_BestCluster	dw	#FFFF,#FFFF
