@@ -2506,9 +2506,15 @@ end_easy
 	ld	hl,TEXT_NO_VALID
 	ld	bc,#1602
 	call	T42_TEXT
+
+	IFDEF ELEMENT		;stisk EDIT=konec, v pripade EL, ktery neni jeste inicializovany, musime udelat 128K reset
+	xor	a
+	jp	#3978
+	ELSE
+
 	pop	hl		;navratova adresa
 	ret			;navrat do BASICu
-
+	ENDIF
 ;user menu
 ;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
 ;definice
