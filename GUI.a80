@@ -1288,6 +1288,11 @@ bootsec1	ld	de,#5555	;vyssi
 		ld	(FirstDataLBA),hl
 		ld	(FirstDataLBA+2),de
 
+; FAT16: HLDE uz obsahuje spravny RootDir LBA.
+; FAT32 pomocne vypocty nize by HLDE znicily.
+		bit     0,(ix-1)
+		jr      z,load_root_dir
+
 ;udaje potrebne pro robustni prohledani FAT32 root directory
 		ld	a,(ix+13)
 		ld	(FAT32_SecPerClus),a
