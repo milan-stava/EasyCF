@@ -20,3 +20,4 @@
 *.tap binary
 *.sna binary
 *.cde binary
+*.sh text eol=lf
