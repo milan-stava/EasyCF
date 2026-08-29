@@ -83,6 +83,40 @@ START
 		call	GUI.gui
 		jp	MAIN.INSTALL
 
+
+	IFDEF ELEMENT
+;------------------------------------------------------------
+; eLeMeNt ZX: enable DivSD + MB02+ compatible memory.
+; On MB03+ the eLeMeNt ID is not present, so this routine
+; returns without changing anything.
+; eLeMeNt ZXi ports: #783B = register select, #793B = data.
+; e_zxi_0FF returns #E1 on eLeMeNt ZX.
+; e_zxi_001 = #02 selects DivSD + MB02+.
+EL_MB02_INIT
+		push	af
+		push	bc
+
+		ld	bc,#783B
+		ld	a,#FF
+		out	(c),a
+		ld	bc,#793B
+		in	a,(c)
+		cp	#E1
+		jr	nz,.done
+
+		ld	bc,#783B
+		ld	a,#01
+		out	(c),a
+		ld	bc,#793B
+		ld	a,#02
+		out	(c),a
+
+.done		pop	bc
+		pop	af
+		ret
+
+	ENDIF
+
 ;virtual (floppy)disk table
 ;General settings
 @autoinstall	db	0		;auto install (/wait for any key)
@@ -162,6 +196,9 @@ TAB		equ	SDroutines.BSDOS_VDT
 TAB_DRV		equ	SDroutines.BSDOS_VDT
 
 INSTALL		di
+	IFDEF ELEMENT
+		call	EL_MB02_INIT
+	ENDIF
 
 ;;presun fontu do HDD banky
 		ld	hl,15616
@@ -461,10 +498,31 @@ dmano
 		ld	bc,768
 		ldir
 
+;------------------------------------------------------------
+; Vystup z EasySD
+; ELEMENT: korektni start BSDOSu pres systemovou sluzbu #30.
+;          Pokud AUTOSYS neni nalezen / vrati se, provedeme
+;          velky 128K reset pres BSROM (BusySoft).
+; MB03+:   puvodni zpusob ukonceni zustava beze zmeny.
+;
+; Pri buildu pro eLeMeNt definuj symbol ELEMENT.
+	IFDEF ELEMENT
+		ld	a,97		; BSDOS banka 1, zapis povolen
+		out	(23),a
+		ld	a,1		; aktualni BSDOS disk @1
+		ld	(#03EE),a
+		ld	a,#30		; BSDOS service #30 START
+		rst	#20		; pokud se AUTOSYS nenajde, sluzba se vrati
+		call	GUI.AUTOSYS_NOT_FOUND
+		call	#3C98		; prepne na BSROM + zakaz zapisu
+		xor	a
+		jp	#3978		; velky 128K reset (BSROM 1.18/1.40)
+	ELSE
 		ld	a,%01000000
 		out	(23),a
 		ei
 		ret
+	ENDIF
 
 ;------------------------------
 ;------------------------------
@@ -1632,4 +1690,4 @@ endfile
 patchLEN	equ 	$-START
 
 		savesna "EasySD.sna",START
-		savebin "EasySD.bin",START,patchLEN
+;		savebin "EasySD.bin",START,patchLEN	;binarky se resi v ramci compile.bat od AI

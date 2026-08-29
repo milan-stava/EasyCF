@@ -239,12 +239,13 @@ MASTERINFO
 	ld	hl,Manufacturer31
 	jr	z,mdl1
 	cp	#74
-	ld	hl,Manufacturer1
+	ld	hl,Manufacturer74
+	jr	z,mdl1
+	cp	#9f			; Kingston SD (CID MID #9F)
+	ld	hl,Manufacturer9f
 	jr	z,mdl1
 	ld	ix,BUFFER
-	ld	hl,TEXT15+4	;Other manufacturer
-	set	7,(hl)
-	ld	hl,TEXT15
+	ld	hl,ManufacturerOther	; unknown manufacturer
 
 ;	set	7,(ix+84)
 
@@ -283,10 +284,23 @@ mdl1	dec	hl
 ;	call	T42_TEXT
 
 	inc	hl
-	ld	l,(hl)
-	ld	h,0
+	ld	a,(hl)		; CID PRV: high nibble=major, low nibble=minor
+	ld	b,a
+	rrca
+	rrca
+	rrca
+	rrca
+	and	#0f
+	add	a,'0'
+	ld	(REV_TEXT),a
+	ld	a,b
+	and	#0f
+	add	a,'0'
+	or	#80		; posledni znak textu pro T42_TEXT
+	ld	(REV_TEXT+2),a
+	ld	hl,REV_TEXT
 	ld	bc,#0616
-	call	NUMBER2
+	call	T42_TEXT
 
 ;serial number/ProductSerialNr
 ;	ld	hl,BUFFER+20
@@ -369,7 +383,40 @@ csd201	srl	h
 	inc	hl
 
 	ld	bc,#0920
-	call	NUMBER1		;udaj v GB
+	ld	a,h
+	or	a
+	jr	z,capacity_lt256
+
+	; HL >= 256. Rozlisime 3 a 4 cifry (SDXC muze mit i 1024/2048 GB).
+	ld	de,1000
+	or	a
+	sbc	hl,de
+	add	hl,de		; obnov HL bez zmeny hodnoty kapacity
+	jr	nc,capacity_4digits
+	call	NUMBER2		; 256..999 GB
+	jr	capacity_done
+
+capacity_lt256
+	ld	a,l
+	cp	10
+	jr	c,capacity_1digit
+	cp	100
+	jr	c,capacity_2digits
+	call	NUMBER2		; 100..255 GB
+	jr	capacity_done
+
+capacity_2digits
+	call	NUMBER1		; 10..99 GB
+	jr	capacity_done
+
+capacity_1digit
+	call	NUMBER0		; 1..9 GB
+	jr	capacity_done
+
+capacity_4digits
+	call	NUMBER3		; 1000..9999 GB
+
+capacity_done
 	inc	c
 	ld	hl,TEXT_GB
 	call	T42_TEXT
@@ -1241,6 +1288,33 @@ bootsec1	ld	de,#5555	;vyssi
 		ld	(FirstDataLBA),hl
 		ld	(FirstDataLBA+2),de
 
+; FAT16: HLDE uz obsahuje spravny RootDir LBA.
+; FAT32 pomocne vypocty nize by HLDE znicily.
+		bit     0,(ix-1)
+		jr      z,load_root_dir
+
+;udaje potrebne pro robustni prohledani FAT32 root directory
+		ld	a,(ix+13)
+		ld	(FAT32_SecPerClus),a
+		ld	l,(ix+44)
+		ld	h,(ix+45)
+		ld	(FAT32_CurCluster),hl
+		ld	l,(ix+46)
+		ld	h,(ix+47)
+		ld	(FAT32_CurCluster+2),hl
+
+;FirstFATLBA = PartitionStartLBA + ReservedSectors
+		ld	hl,(bootsec+1)
+		ld	de,(bootsec1+1)
+		ld	c,(ix+14)
+		ld	b,(ix+15)
+		add	hl,bc
+		jr	nc,.fatlba_no_carry
+		inc	de
+.fatlba_no_carry
+		ld	(FAT32_FirstFATLBA),hl
+		ld	(FAT32_FirstFATLBA+2),de
+
 ;hotovo pro FAT16. HLDE= root dir pro FAT16
 
 
@@ -1305,9 +1379,24 @@ lrd2		call	T42_TEXT	;vypis jeho cislo
 
 ;	ld	ix,BUFFER
 ;;;	ld	a,%00000000	;master
+
+;FAT32: neber prvni MBD podle poradi directory entries.
+;Projdi cely root cluster chain a vyber MBD/MBH s NEJNIZSIM start clusterem,
+;tj. fyzicky prvni image na karte.
+	ld	a,(fat_type)
+	bit	0,a
+	jr	z,.scan_fat16_old
+
+	call	FAT32_FIND_LOWEST_MBD
+	ld	hl,(VDT_pointer+1)
+	or	a
+	jp	nz,platne
+	jr	mbd_not_found
+
+.scan_fat16_old
 	call	SD_READ
 
-	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
+	ld	b,8		;; FAT16 zustava beze zmeny: prvnich 8 polozek
 	ld	de,32		;; kazda polozka ma 32 bytes
 	ld	hl,(VDT_pointer+1)
 nextfile
@@ -1319,13 +1408,14 @@ nextfile
 	jr	nz, neplatne
 	ld	a,(ix+0ah)
 	cp	"H"
-	jr	z, platne
+	jp	z, platne
 	cp	"D"
-	jr	z, platne
+	jp	z, platne
 neplatne
 	add	ix,de
 	djnz	nextfile
 
+mbd_not_found
 	res	1,(hl)		;nastav priznak, ze jde o nepouzitelny oddil, nema MBD soubor
 
 	ld	hl,TEXT_NODATA
@@ -1367,6 +1457,241 @@ no_data_red_fill
 	ld	bc,32
 	jp	ep3
 
+
+;------------------------------------------------------------------------------
+; FAT32_FIND_LOWEST_MBD
+; Projde CELÝ ALOKOVANY FAT32 root directory cluster chain a z nalezenych MBD/MBH
+; vybere soubor s nejmensim start clusterem = fyzicky prvni MBD.
+;
+; OUT:
+;   A=0  ... MBD/MBH nenalezen
+;   A=1  ... nalezen, IX -> FAT32_BestEntry (32B kopie directory entry)
+;
+; Pouziva BUFFER pro directory sektor, BUFFER2 pro sektor FAT.
+;------------------------------------------------------------------------------
+FAT32_FIND_LOWEST_MBD
+	xor	a
+	ld	(FAT32_Found),a
+	ld	hl,#FFFF
+	ld	(FAT32_BestCluster),hl
+	ld	(FAT32_BestCluster+2),hl
+
+.f32_cluster_loop
+	; DirLBA = FirstDataLBA + (CurCluster-2) * SecPerClus
+	; Pouzij existujici 32bit math rutiny; pouze platne Z80 instrukce.
+	ld	hl,(FAT32_CurCluster)
+	ld	de,(FAT32_CurCluster+2)
+	ld	a,2
+	call	SUB32_8
+	ld	a,(FAT32_SecPerClus)
+	call	MUL32x8
+	exx
+	ld	hl,(FirstDataLBA)
+	ld	de,(FirstDataLBA+2)
+	call	ADD32_32
+
+	ld	(FAT32_DirLBA),hl
+	ld	(FAT32_DirLBA+2),de
+
+	ld	a,(FAT32_SecPerClus)
+	ld	(FAT32_SectorsLeft),a
+
+.f32_sector_loop
+	ld	de,(FAT32_DirLBA)
+	ld	hl,(FAT32_DirLBA+2)
+	ld	ix,BUFFER
+	call	SD_READ
+
+	ld	b,16			; cely 512B sektor = 16 x 32B entries
+	ld	ix,BUFFER
+
+.f32_entry_loop
+	ld	a,(ix+0)
+	or	a
+	jp	z,.f32_next_entry	; 00 = volna/nepouzita polozka; projdeme cely alokovany root chain
+	cp	#E5
+	jp	z,.f32_next_entry	; deleted
+
+	ld	a,(ix+11)
+	cp	#0F
+	jr	z,.f32_next_entry	; LFN
+	bit	3,a
+	jr	nz,.f32_next_entry	; volume label
+	bit	4,a
+	jr	nz,.f32_next_entry	; directory
+
+	ld	a,(ix+8)
+	cp	"M"
+	jr	nz,.f32_next_entry
+	ld	a,(ix+9)
+	cp	"B"
+	jr	nz,.f32_next_entry
+	ld	a,(ix+10)
+	cp	"D"
+	jr	z,.f32_candidate
+	cp	"H"
+	jr	nz,.f32_next_entry
+
+.f32_candidate
+	; FAT32 start cluster: HI word @20, LO word @26
+	ld	l,(ix+26)
+	ld	h,(ix+27)
+	ld	e,(ix+20)
+	ld	a,(ix+21)
+	and	#0F
+	ld	d,a
+
+	; cluster 0/1 neni platny datovy cluster
+	ld	a,d
+	or	e
+	or	h
+	jr	nz,.f32_compare
+	ld	a,l
+	cp	2
+	jr	c,.f32_next_entry
+
+.f32_compare
+	; unsigned 32bit: DEHL < BestCluster ?
+	; candidate-Best, carry z horniho slova znamena candidate < Best.
+	push	de
+	push	hl
+	ld	bc,(FAT32_BestCluster)
+	or	a
+	sbc	hl,bc
+	ex	de,hl
+	ld	bc,(FAT32_BestCluster+2)
+	sbc	hl,bc
+	pop	hl
+	pop	de
+	jr	nc,.f32_next_entry
+
+.f32_new_best
+	ld	(FAT32_BestCluster),hl
+	ld	(FAT32_BestCluster+2),de
+
+	push	bc			; zachovej B = pocitadlo directory entries
+	push	ix
+	pop	hl
+	ld	de,FAT32_BestEntry
+	ld	bc,32
+	ldir
+	pop	bc
+	ld	a,1
+	ld	(FAT32_Found),a
+
+.f32_next_entry
+	ld	de,32
+	add	ix,de
+	dec	b
+	jp	nz,.f32_entry_loop
+
+	; dalsi sektor stejneho root clusteru
+	ld	hl,FAT32_DirLBA
+	inc	(hl)
+	jr	nz,.f32_lba_inc_done
+	inc	hl
+	inc	(hl)
+	jr	nz,.f32_lba_inc_done
+	inc	hl
+	inc	(hl)
+	jr	nz,.f32_lba_inc_done
+	inc	hl
+	inc	(hl)
+.f32_lba_inc_done
+
+	ld	a,(FAT32_SectorsLeft)
+	dec	a
+	ld	(FAT32_SectorsLeft),a
+	jp	nz,.f32_sector_loop
+
+	; Nacti FAT entry pro aktualni root cluster.
+	; FAT32 ma 128 zaznamu/sektor => FAT sector = cluster >> 7.
+	; CurCluster je little-endian 32bit; FAT32 pouziva jen 28 bitu.
+	ld	a,(FAT32_CurCluster)
+	ld	h,a
+	ld	a,(FAT32_CurCluster+1)
+	ld	l,a
+	ld	a,(FAT32_CurCluster+2)
+	ld	e,a
+	ld	d,0
+	add	hl,hl
+	rl	e
+	rl	d
+	ld	h,l
+	ld	l,e
+	ld	e,d
+	ld	d,0
+
+	; DEHL = cluster>>7; pricteme absolutni LBA prvni FAT.
+	ld	bc,(FAT32_FirstFATLBA)
+	add	hl,bc
+	ex	de,hl
+	ld	bc,(FAT32_FirstFATLBA+2)
+	adc	hl,bc
+	ex	de,hl
+
+	ex	de,hl			; SD_READ: HL=upper, DE=lower
+	ld	ix,BUFFER2
+	call	SD_READ
+
+	; offset v FAT sektoru = (cluster & 127)*4
+	ld	a,(FAT32_CurCluster)
+	and	#7F
+	add	a,a
+	add	a,a
+	ld	l,a
+	ld	h,0
+	ld	de,BUFFER2
+	add	hl,de
+
+	ld	e,(hl)
+	inc	hl
+	ld	d,(hl)
+	inc	hl
+	ld	c,(hl)
+	inc	hl
+	ld	a,(hl)
+	and	#0F
+	ld	b,a			; BCDE = next cluster (B highest)
+
+	; EOC >= 0FFFFFF8, bad cluster 0FFFFFF7 take also as end.
+	ld	a,b
+	cp	#0F
+	jr	nz,.f32_store_next
+	ld	a,c
+	cp	#FF
+	jr	nz,.f32_store_next
+	ld	a,d
+	cp	#FF
+	jr	nz,.f32_store_next
+	ld	a,e
+	cp	#F7
+	jr	nc,.f32_directory_end
+
+.f32_store_next
+	; 0/1 = invalid chain => konec
+	ld	a,b
+	or	c
+	or	d
+	jr	nz,.f32_next_valid
+	ld	a,e
+	cp	2
+	jr	c,.f32_directory_end
+.f32_next_valid
+
+	ld	(FAT32_CurCluster),de
+	ld	h,b
+	ld	l,c
+	ld	(FAT32_CurCluster+2),hl
+	jp	.f32_cluster_loop
+
+.f32_directory_end
+	ld	a,(FAT32_Found)
+	or	a
+	ret	z
+	ld	ix,FAT32_BestEntry
+	ld	a,1
+	ret
 
 ;Skutečná fyzická pozice souboru na disku se spočítá tak, že se od čísla clusteru odečte 2, to se vynásobí počtem sektorů na cluster a přičte se začátek datové oblasti. Stejne pro FAT16 i FAT32.
 
@@ -1665,9 +1990,9 @@ nextfile
 	jr	nz, neplatne
 	ld	a,(ix+0ah)
 	cp	"H"
-	jr	z, platne
+	jp	z, platne
 	cp	"D"
-	jr	z, platne
+	jp	z, platne
 neplatne
 	add	ix,de
 	djnz	nextfile
@@ -2072,7 +2397,7 @@ Slaveinentify
 Endinentify
 ;projed partisny, zda jsou vsechny platne
 	call	check_for_valid
-	jr	z,end_easy
+	jp	z,end_easy
 
 	ld	a,(@autoconfig)
 	or	a
@@ -2110,7 +2435,7 @@ fp1	ld	hl,TEXT_CLR
 	ld	bc,#1602
 	call	T42_TEXT
 	ld	hl,TEXT100
-	ld	bc,#1608
+	ld	bc,#1602
 	call	T42_TEXT
 
 valid_partition
@@ -2118,13 +2443,38 @@ valid_partition
 	ld	h,0
 	ld	l,a
 	call	NUMBER0
+	ld	hl,TEXT_PRESS_KEY
+	ld	bc,#161A
+	call	T42_TEXT
 
 autoinstall_yes_no
 	ld	a,(@autoinstall)
 	or	a
 ayn	call	z,ANYKEY
+	IFDEF ELEMENT
+		ld	hl,TEXT_CLR
+		ld	bc,#1602
+		call	T42_TEXT
+		ld	hl,TEXT_AUTOSYS
+		ld	bc,#160C
+		call	T42_TEXT
+	ENDIF
 	ret
 ; navrat
+
+;------------------------------------------------------------
+; eLeMeNt only: service #30 returned, so AUTOSYS was not started.
+; Replace the status line, wait for acknowledgement and return
+; to MAIN, which will continue with the BSROM reset fallback.
+AUTOSYS_NOT_FOUND
+	ld	hl,TEXT_CLR
+	ld	bc,#1602
+	call	T42_TEXT
+	ld	hl,TEXT_AUTOSYS_NOT_FOUND
+	ld	bc,#1606
+	call	T42_TEXT
+	call	ANYKEY
+	ret
 
 test_partition				;IN=A=partition number 1-4, OUT=Z=invalid partition, NZ=valid
 	ld	de,32			;testuj zvolenou partisnu (v @partition), zda je platna
@@ -2156,9 +2506,15 @@ end_easy
 	ld	hl,TEXT_NO_VALID
 	ld	bc,#1602
 	call	T42_TEXT
+
+	IFDEF ELEMENT		;stisk EDIT=konec, v pripade EL, ktery neni jeste inicializovany, musime udelat 128K reset
+	xor	a
+	jp	#3978
+	ELSE
+
 	pop	hl		;navratova adresa
 	ret			;navrat do BASICu
-
+	ENDIF
 ;user menu
 ;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
 ;definice
@@ -2175,7 +2531,7 @@ wind_curs_item	db #55		;current start cursor position of the window (0-page)
 key_enter	ld	a,(wind_curs_item)
 		inc	a
 		call	test_partition
-		jr	nz,found_partition	;NZ=we found the valid one
+		jp	nz,found_partition	;NZ=we found the valid one
 
 		ld	hl,TEXT_CLR
 		ld	bc,#1602
@@ -2336,6 +2692,9 @@ TEXT_CLR
 
 ;TEXT100	dc	16,67,"Press a key to install to partition "
 TEXT100		dc	16,67,"Installed to partition "
+TEXT_PRESS_KEY	dc	16,67,", press a key"
+TEXT_AUTOSYS	dc	16,67,"Running AUTOSYS..."
+TEXT_AUTOSYS_NOT_FOUND	dc	16,67,"AUTOSYS not found, press a key"
 ;TEXT101	dc	16,70,"C/H/S:"
 ;TEXT101	dc	"Permanent WP:      Temporal WP:"
 TEXT102	db	16,70,"Capacity: "
@@ -2357,9 +2716,12 @@ Manufacturer1d	dc	"AData"
 Manufacturer27	dc	"Phison"
 Manufacturer31	dc	"Silicon Power"
 Manufacturer74	dc	"Transcend"
+Manufacturer9f	dc	"Kingston"
+ManufacturerOther	dc	"Other"
 carka		dc	","
 lomeno		dc	"/"
-TEXT_GB		dc	"G"
+TEXT_GB		dc	" G"
+REV_TEXT	db	"0.","0"+#80	; CID Product Revision, napr. #61 -> 6.1
 TEXT_CSD	dc	"CSD:"
 TEXT_10		dc	"1.0"
 TEXT_20		dc	"2.0"
@@ -3514,8 +3876,20 @@ D2LBA	defw	0,0,0
 LEN	equ	$-32768
 
 FirstDataLBA	dw	0,0		;absolutni LBA zacatku datove oblasti
-fat_type	db	#55		;bit 0=Z=FAT16, bit 0=NZ=FAT32
 
+;pracovni data pro FAT32 root-chain hledani fyzicky prvniho MBD/MBH
+FAT32_FirstFATLBA	dw	0,0
+FAT32_CurCluster	dw	0,0
+FAT32_DirLBA		dw	0,0
+FAT32_BestCluster	dw	#FFFF,#FFFF
+FAT32_SecPerClus	db	0
+FAT32_SectorsLeft	db	0
+FAT32_Found		db	0
+FAT32_BestEntry		block	32
+
+; POZOR: fat_type MUSI zustat bezprostredne pred BUFFER.
+; Stavajici kod testuje FAT typ take pres (ix-1), kdyz IX=BUFFER.
+fat_type	db	#55		;bit 0=Z=FAT16, bit 0=NZ=FAT32
 BUFFER	;equ	25000
 	block	512
 BUFFER2	;equ	38000
