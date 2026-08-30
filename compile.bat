@@ -35,7 +35,6 @@ echo ========================================
 echo   EasySD_MB.bin      - MB03+
 echo   EasySD_EL.bin      - eLeMeNt
 echo   EasySD_MB_BIN.tap  - simple TAP: LOAD 32768 / USR 32768
-echo   EasySD_EL_BIN.tap  - simple TAP: LOAD 32768 / USR 32768
 echo   EasySD_EL.tap      - full eLeMeNt startup TAP
 echo   EasySD_MB.lst
 echo   EasySD_EL.lst

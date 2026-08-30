@@ -174,7 +174,7 @@ $TOK_USR       = [byte]0xC0
 
 
 # ----------------------------------------------------------------------
-# Simple TAPs containing EasySD_MB.bin / EasySD_EL.bin
+# Simple TAP containing EasySD_MB.bin
 #
 # BASIC:
 # 10 CLEAR 32767: LOAD "" CODE 32768:RANDOMIZE USR 32768
@@ -400,7 +400,6 @@ function Make-FullElementTap {
 
 try {
     Make-SimpleEasyTap "EasySD_MB.bin" "EasySD_MB_BIN.tap" "EASYSD_MB"
-    Make-SimpleEasyTap "EasySD_EL.bin" "EasySD_EL_BIN.tap" "EASYSD_EL"
     Make-FullElementTap
 }
 catch {

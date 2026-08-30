@@ -59,7 +59,6 @@ if (( BIN_ONLY == 0 )); then
     fi
 
     [[ -s EasySD_MB_BIN.tap ]] || die "EasySD_MB_BIN.tap was not created"
-    [[ -s EasySD_EL_BIN.tap ]] || die "EasySD_EL_BIN.tap was not created"
     [[ -s EasySD_EL.tap ]] || die "EasySD_EL.tap was not created"
 fi
 
@@ -74,7 +73,6 @@ echo "  EasySD_EL.lst"
 
 if (( BIN_ONLY == 0 )); then
     echo "  EasySD_MB_BIN.tap  - simple MB03+ TAP"
-    echo "  EasySD_EL_BIN.tap  - simple eLeMeNt TAP"
     echo "  EasySD_EL.tap      - full eLeMeNt startup TAP"
 fi
 
