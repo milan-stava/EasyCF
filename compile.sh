@@ -26,7 +26,7 @@ echo "========================================"
 echo "  Building EasySD for MB03+"
 echo "========================================"
 
-rm -f EasySD_MB.bin EasySD_MB.lst EasySD.bin
+rm -f EasySD_MB.bin EasySD_MB.lst
 sjasmplus --lst=EasySD_MB.lst --raw=EasySD_MB.bin easyhdd.a80 || die "MB03+ BUILD FAILED"
 [[ -s EasySD_MB.bin ]] || die "MB03+ build did not create EasySD_MB.bin"
 
@@ -35,11 +35,10 @@ echo "========================================"
 echo "  Building EasySD for eLeMeNt"
 echo "========================================"
 
-rm -f EasySD_EL.bin EasySD_EL.lst EasySD.bin
+rm -f EasySD_EL.bin EasySD_EL.lst
 sjasmplus --lst=EasySD_EL.lst --define ELEMENT --raw=EasySD_EL.bin easyhdd.a80 || die "eLeMeNt BUILD FAILED"
 [[ -s EasySD_EL.bin ]] || die "eLeMeNt build did not create EasySD_EL.bin"
 
-cp -f EasySD_MB.bin EasySD.bin
 
 if (( BIN_ONLY == 0 )); then
     echo
@@ -70,7 +69,6 @@ echo "  BUILD OK"
 echo "========================================"
 echo "  EasySD_MB.bin      - MB03+"
 echo "  EasySD_EL.bin      - eLeMeNt"
-echo "  EasySD.bin         - MB03+ legacy name"
 echo "  EasySD_MB.lst"
 echo "  EasySD_EL.lst"
 

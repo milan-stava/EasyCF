@@ -97,7 +97,13 @@ nosplash
 	call	sprite2.SP_
 	call	EasyLogoSmall		;nove logo Easy SD
 	ld	hl,TEXT1		;vrchni prostredni tabulka
+
+	IFDEF	ELEMENT
 	ld	bc,#020b
+	ELSE
+	ld	bc,#020C
+	ENDIF
+
 	call	T42_TEXT
 	ld	hl,TEXT2
 	ld	bc,#030d
@@ -2630,7 +2636,11 @@ dc_2		ld	(hl),a
 		ret
 */
 ;------------------------------
-TEXT1	dc	16,70,"EasySD 0.8 for MB03+"
+	IFDEF	ELEMENT
+TEXT1	dc	16,70,"EasySD 1.0-eLeMeNtZX"
+	ELSE
+TEXT1	dc	16,70,"EasySD 1.0 - MB03+"
+	ENDIF
 TEXT2	dc	16,3,127," MB03+ team 2026"
 ;TEXT3	dc	16,70,"MASTER DISK:"
 TEXT3	dc	16,70,"SDcard:"
@@ -2641,7 +2651,7 @@ TEXT5	dc	16,70,"ProductSerialNr.:"
 ;TEXT6	dc	16,70,"Serial number:"
 TEXT6	dc	16,70,"Manufacturing date:"
 ;TEXT7	dc	16,70,"LBA28-bit:     LBA48-bit:     DMA:"
-TEXT7	dc	16,70,"ReadBlLen:       SDcard size:"
+TEXT7	dc	16,70,"ReadBlLen:       SDcard size: "
 ;TEXT8	dc	16,70,"SLAVE DISK:"
 TEXT8	dc	16,66,"checking..."
 TEXT9	db	"Total LBA 48 bi"

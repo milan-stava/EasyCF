@@ -27,8 +27,6 @@ echo ========================================
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0make_taps.ps1"
 if errorlevel 1 goto :error_taps
 
-rem Keep historical EasySD.bin as the MB03+ build.
-copy /Y EasySD_MB.bin EasySD.bin >nul
 
 echo.
 echo ========================================
@@ -39,7 +37,6 @@ echo   EasySD_EL.bin      - eLeMeNt
 echo   EasySD_MB_BIN.tap  - simple TAP: LOAD 32768 / USR 32768
 echo   EasySD_EL_BIN.tap  - simple TAP: LOAD 32768 / USR 32768
 echo   EasySD_EL.tap      - full eLeMeNt startup TAP
-echo   EasySD.bin         - MB03+ legacy name
 echo   EasySD_MB.lst
 echo   EasySD_EL.lst
 echo ========================================
