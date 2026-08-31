@@ -32,8 +32,6 @@ zvukend
 
 	module	GUI
 
-	SD_DRIVER 0
-
 zvukcmp equ	60000		;adresa zkopilovaneho zvuku
 
 gui	di
@@ -131,19 +129,9 @@ nosplash
 	ld	bc,#050A
 	call	T42_TEXT	;piseme checking...	
 
-	call	SD_INIT		;initialise SD card
-					;identifikace SD karty
-	call	SD_ON
 	ld	ix,BUFFER
-	call	SD_CID			;nacti registry SD karty
-	ld	ix,BUFFER+16
-	call	SD_CSD			;nacti dalsi registry SD karty
-	call	SD_OFF
-	jr	MASTERINFO
-
-;;;	ld	ix,BUFFER	;for the moment we put away
-;;;	ld	a,%00000000
-;;;	call	IDENTIFY
+	xor	a			;CF je vzdy MASTER
+	call	IDENTIFY
 ;	xor	a		;testovaci
 	ld	hl,TEXT16
 	push	af
@@ -187,10 +175,102 @@ nulydoCHSm
 	inc	hl
 	djnz	nulydoCHSm
 nemenCHSm1
-;;	jp	Slaveinentify		;vyresit, proc to tu je?
+	jp	end_easy		;MASTER CF chybi nebo neodpovida; SLAVE se nepodporuje
 
 MASTERINFO
-	ld	hl,TEXT4	;nejdriv vypise texty
+	ld	hl,TEXT4
+	ld	bc,#0602
+	call	T42_TEXT
+	ld	hl,TEXT5
+	ld	bc,#0702
+	call	T42_TEXT
+	ld	hl,TEXT6
+	ld	bc,#0802
+	call	T42_TEXT
+	ld	hl,TEXT7
+	ld	bc,#0902
+	call	T42_TEXT
+	ld	hl,TEXT102
+	ld	bc,#0A02
+	call	T42_TEXT
+
+	; ATA IDENTIFY text fields are word-swapped.
+	ld	hl,BUFFER+54		;model, words 27-46
+	ld	b,40
+	call	PROHOD
+	ld	ix,BUFFER
+	set	7,(ix+84)		;31 znaku se vejde na radek GUI
+	ld	hl,BUFFER+54
+	ld	bc,#0609
+	call	T42_TEXT
+
+	ld	hl,BUFFER+46		;firmware, words 23-26
+	ld	b,8
+	call	PROHOD
+	set	7,(ix+53)
+	ld	hl,BUFFER+46
+	ld	bc,#070C
+	call	T42_TEXT
+
+	ld	hl,BUFFER+20		;serial number, words 10-19
+	ld	b,20
+	call	PROHOD
+	set	7,(ix+39)
+	ld	hl,BUFFER+20
+	ld	bc,#0811
+	call	T42_TEXT
+
+	; LBA28 support: IDENTIFY word 49, bit 9.
+	ld	hl,TEXT_NO
+	bit	1,(ix+99)
+	jr	z,.cf_lba28
+	ld	hl,TEXT_YES
+.cf_lba28
+	ld	bc,#090D
+	call	T42_TEXT
+
+	; LBA48 support: IDENTIFY word 83, bit 10.
+	ld	hl,TEXT_NO
+	ld	a,(BUFFER+167)
+	bit	2,a
+	jr	z,.cf_lba48
+	ld	hl,TEXT_YES
+.cf_lba48
+	ld	bc,#091C
+	call	T42_TEXT
+
+	; DMA support: IDENTIFY word 49, bit 8.
+	ld	hl,TEXT_NO
+	bit	0,(ix+99)
+	jr	z,.cf_dma
+	ld	hl,TEXT_YES
+.cf_dma
+	ld	bc,#0925
+	call	T42_TEXT
+
+	; LBA28 sector count (words 60-61) -> capacity in MiB (/2048).
+	ld	hl,(BUFFER+120)
+	ld	de,(BUFFER+122)
+	ld	b,11
+.cf_capacity_shift
+	srl	d
+	rr	e
+	rr	h
+	rr	l
+	djnz	.cf_capacity_shift
+	ld	(zzbin),hl
+	ld	(zzbin+2),de
+	call	HL2ASCII32
+	ld	hl,zzdec+9
+	set	7,(hl)
+	ex	de,hl			;HL = prvni platna ASCII cifra
+	ld	bc,#0A0C
+	call	T42_TEXT
+	jp	next
+
+; Puvodni SD identifikacni vypis ponechan docasne jako nedostupna reference.
+MASTERINFO_SD_UNUSED
+		ld	hl,TEXT4	;nejdriv vypise texty
 	ld	bc,#0602
 	call	T42_TEXT
 	ld	hl,TEXT_CSD
@@ -893,7 +973,7 @@ test_partitions				;loop start
 		ld	hl,0
 		ld	d,h
 		ld	e,h
-		call	SD_READ
+		call	ATA_READ
 
 		pop	bc
 		pop	ix
@@ -1070,13 +1150,13 @@ part_gpt
 ; OEM ID je od offsetu +3: "NTFS    " nebo "EXFAT   ".
 part_type_07
 	push	ix
-	; SD_READ expects HL=upper 16 bits LBA, DE=lower 16 bits LBA
+	; ATA_READ expects HL=upper 16 bits LBA, DE=lower 16 bits LBA
 	ld	e,(ix+8)
 	ld	d,(ix+9)
 	ld	l,(ix+10)
 	ld	h,(ix+11)
 	ld	ix,BUFFER2
-	call	SD_READ
+	call	ATA_READ
 	pop	ix
 
 	ld	a,(BUFFER2+3)
@@ -1217,7 +1297,7 @@ mbs2		call	T42_TEXT	;vypis jeho cislo
 		push	bc		;posun tiskovou pozici
 
 		ld	ix,BUFFER
-		call	SD_READ		;nacti boot na adresu v IX (BUFFER)
+		call	ATA_READ		;nacti boot na adresu v IX (BUFFER)
 
 /*toto bylo na zacatku, kdyz jsem si to potreboval vizualizovat
 		ld	hl,BUFFER+11	;prenes hodnoty z boot sektoru potrebne pro vypocet
@@ -1400,7 +1480,7 @@ lrd2		call	T42_TEXT	;vypis jeho cislo
 	jr	mbd_not_found
 
 .scan_fat16_old
-	call	SD_READ
+	call	ATA_READ
 
 	ld	b,8		;; FAT16 zustava beze zmeny: prvnich 8 polozek
 	ld	de,32		;; kazda polozka ma 32 bytes
@@ -1506,7 +1586,7 @@ FAT32_FIND_LOWEST_MBD
 	ld	de,(FAT32_DirLBA)
 	ld	hl,(FAT32_DirLBA+2)
 	ld	ix,BUFFER
-	call	SD_READ
+	call	ATA_READ
 
 	ld	b,16			; cely 512B sektor = 16 x 32B entries
 	ld	ix,BUFFER
@@ -1636,9 +1716,9 @@ FAT32_FIND_LOWEST_MBD
 	adc	hl,bc
 	ex	de,hl
 
-	ex	de,hl			; SD_READ: HL=upper, DE=lower
+	ex	de,hl			; ATA_READ: HL=upper, DE=lower
 	ld	ix,BUFFER2
-	call	SD_READ
+	call	ATA_READ
 
 	; offset v FAT sektoru = (cluster & 127)*4
 	ld	a,(FAT32_CurCluster)
@@ -1891,7 +1971,7 @@ nemenfirstdatasectorm1
 ;;;	ld	a,%00000000	;master
 	ld	hl,0
 	ld	de,0		;HLDE = LBA 0
-	call	SD_READ
+	call	ATA_READ
 ; dodelat osetreni erroru
 	inc	hx
 	inc	hx		;+512
@@ -1942,7 +2022,7 @@ MBRno	ex	de,hl		;v hl je cislo sectoru kde zacina boot prvni par.
 	pop	hl
 	ld	de,0		;HLDE = 32bit LBA, zde hornich 16 bitu = 0
 	ld	ix,BUFFER
-	call	SD_READ
+	call	ATA_READ
 ; dodelat osetreni erroru
 ; vypocet datove oblasti prvniho souboru
 
@@ -1983,7 +2063,7 @@ part_c	call	nasobeniHLDE.nasob	;vysledek v IXHL
 	;;nacteni Root Directory sectoru
 	ld	de,0		;HLDE = 32bit LBA, zde hornich 16 bitu = 0
 	ld	ix,BUFFER
-	call	SD_READ
+	call	ATA_READ
 
 	ld	b,8		;;prohledam prvnich 8 polozek, jestli zde neni mbd nebo mbh soubor, hledam jen priponu
 	ld	de,32		;; kazda polozka ma 32 bytes
@@ -2637,21 +2717,16 @@ dc_2		ld	(hl),a
 */
 ;------------------------------
 	IFDEF	ELEMENT
-TEXT1	dc	16,70,"EasySD 1.0-eLeMeNtZX"
+TEXT1	dc	16,70,"EasyCF 1.0-eLeMeNtZX"
 	ELSE
-TEXT1	dc	16,70,"EasySD 1.0 - MB03+"
+TEXT1	dc	16,70,"EasyCF 1.0 - MB03+"
 	ENDIF
 TEXT2	dc	16,3,127," MB03+ team 2026"
-;TEXT3	dc	16,70,"MASTER DISK:"
-TEXT3	dc	16,70,"SDcard:"
-;TEXT4	dc	16,70,"Model:"
-TEXT4	dc	16,70,"ProductRevisionNr.:"
-;TEXT5	dc	16,70,"Firmware:"
-TEXT5	dc	16,70,"ProductSerialNr.:"
-;TEXT6	dc	16,70,"Serial number:"
-TEXT6	dc	16,70,"Manufacturing date:"
-;TEXT7	dc	16,70,"LBA28-bit:     LBA48-bit:     DMA:"
-TEXT7	dc	16,70,"ReadBlLen:       SDcard size: "
+TEXT3	dc	16,70,"MASTER CF:"
+TEXT4	dc	16,70,"Model:"
+TEXT5	dc	16,70,"Firmware:"
+TEXT6	dc	16,70,"Serial number:"
+TEXT7	dc	16,70,"LBA28-bit:     LBA48-bit:     DMA:"
 ;TEXT8	dc	16,70,"SLAVE DISK:"
 TEXT8	dc	16,66,"checking..."
 TEXT9	db	"Total LBA 48 bi"
@@ -3694,6 +3769,143 @@ IISS	defb	0,16,#1E
 	defb	#1D
 	defb	":`?/"
 */
+
+;------------------------------
+; ATA IDENTIFY DEVICE pro jedinou podporovanou CF kartu MASTER.
+; Vstup: IX=512B buffer. Vystup: Z=OK, NZ=kod chyby.
+IDENTIFY
+	call	TST_BSY
+	ret	nz
+	ld	a,#E0			;MASTER + LBA mode
+	out	(P_HEA),a
+	xor	a
+	out	(P_HSE),a
+	out	(P_NSE),a
+	out	(P_CYL),a
+	out	(P_CYH),a
+	ld	a,#EC			;ATA IDENTIFY DEVICE
+	out	(P_COM),a
+	call	TST_DR
+	ret	nz
+	call	RD_512
+	call	TST_BSY
+	ret	nz
+	bit	0,a
+	jr	nz,ATA_GUI_STATUS_ERROR
+	xor	a
+	ret
+
+; Fyzicke cteni jednoho 512B ATA sektoru.
+; Vstup: HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA, IX=buffer.
+ATA_READ
+	call	TST_BSY
+	ret	nz
+	ld	a,h
+	and	#F0
+	jr	nz,ATA_GUI_LBA_RANGE
+	ld	a,h
+	and	#0F
+	or	#E0			;MASTER + LBA mode + LBA 27..24
+	out	(P_HEA),a
+	ld	a,1
+	out	(P_HSE),a
+	ld	a,e
+	out	(P_NSE),a		;LBA 7..0
+	ld	a,d
+	out	(P_CYL),a		;LBA 15..8
+	ld	a,l
+	out	(P_CYH),a		;LBA 23..16
+	ld	a,#20			;ATA READ SECTORS
+	out	(P_COM),a
+	call	TST_DR
+	ret	nz
+	call	RD_512
+	call	TST_BSY
+	ret	nz
+	bit	0,a
+	jr	nz,ATA_GUI_STATUS_ERROR
+	xor	a
+	ret
+
+ATA_GUI_LBA_RANGE
+	ld	a,%00010000
+	or	a
+	ret
+
+ATA_GUI_STATUS_ERROR
+	in	a,(P_ERR)
+	or	a
+	ret	nz
+	inc	a			;ERR byl nastaven, nevracej falesne Z
+	ret
+
+; Ceka na konec BSY. #FF znamena, ze zarizeni/port neodpovida.
+TST_BSY
+	push	hl
+	ld	hl,0
+.ata_bsy_loop
+	dec	hl
+	ld	a,l
+	or	h
+	jr	z,.ata_timeout
+	in	a,(P_COM)
+	cp	#FF
+	jr	z,.ata_bsy_loop
+	bit	7,a
+	jr	nz,.ata_bsy_loop
+	pop	hl
+	ret
+.ata_timeout
+	ld	a,#FF
+	or	a
+	pop	hl
+	ret
+
+; Test BSY, DRDY, DRQ a ERR po ATA prikazu.
+TST_DR
+	call	TST_BSY
+	ret	nz
+	bit	6,a
+	jr	z,.ata_not_ready
+	bit	3,a
+	jr	z,.ata_no_drq
+	bit	0,a
+	jr	nz,ATA_GUI_STATUS_ERROR
+	xor	a
+	ret
+.ata_not_ready
+	ld	a,6
+	or	a
+	ret
+.ata_no_drq
+	ld	a,3
+	or	a
+	ret
+
+; DMA prenos 512 bajtu z ATA datoveho portu do adresy v IX.
+RD_512
+	ld	(DMADR1),ix
+	ld	hl,RD1S
+	ld	bc,((RD1END-RD1S)*256)+DMA
+	otir
+	ld	b,#87			;WR6 enable DMA
+	out	(c),b
+	ret
+
+RD1S
+	db	#C3			;WR6 reset
+	db	%01111101		;WR0 A->B, transfer
+	dw	P_DAT			;source port
+	dw	511			;block length - 1
+	db	%01101100		;WR1 A fixed I/O, variable cycle
+	db	%11001101		;3T, no early cycle end
+	db	%00010000		;WR2 B memory, increment
+	db	%10101101		;WR4 continuous
+DMADR1	dw	0			;destination
+	db	%10010010		;WR5 ready low, stop on end
+	db	#CF			;WR6 load
+	db	#B3			;WR6 force ready
+RD1END
 
 ;------------------------------
 /* also not needed for SD cards

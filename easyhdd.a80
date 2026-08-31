@@ -75,11 +75,14 @@
 	DEVICE ZXSPECTRUM48
 
 		include "math_macros.a80"
-		include "sd_macros.a80"
 
 
 		org	32768
 START
+	IFDEF ELEMENT
+		; IDE/CF port musi byt na eLeMeNtu zpristupnen jeste pred GUI IDENTIFY.
+		call	EL_MB02_INIT
+	ENDIF
 		call	GUI.gui
 		jp	MAIN.INSTALL
 
@@ -121,14 +124,13 @@ EL_MB02_INIT
 ;General settings
 @autoinstall	db	0		;auto install (/wait for any key)
 @autoconfig	db	1		;1=auto configure (automatic search for first sector & set hdd parameters to VDT)
-;new parameter for EasySD. If set to 0, selection will be done manually.
-@partition	db	4		;if @autoconfi=1, use values 1-4 (for SD0), 5-8 (for SD1), use partition. If not usable, use the first available from start
+;new parameter for EasyCF. If set to 0, selection will be done manually.
+@partition	db	4		;if @autoconfig=1, use partition 1-4. If not usable, use the first available from start
 @showsplash	db	0		;show splash screen
 @playnoise	db	0		;playnoise
 		db	1		;show gui
 @noverify 	db	0		;disable write verify
-;@dmar3		db	1		;install dma patch (oprava hodnoty dma registru R3)
-@dmar3		db	0		;install dma patch (oprava hodnoty dma registru R3)	pro ucely SD vypiname DMA
+@dmar3		db	1		;install dma patch (oprava hodnoty dma registru R3)
 
 /* presouvame na konec RAMky
 ;master disk
@@ -148,9 +150,9 @@ VDTLEN		equ 	$-VDT
 VDTLEN		equ	256
 ;		org	align		; "align" neni definovane navesti - puvodni radek docasne vypnut
 
-HDD_MAIN_START		equ	#0090		;zacatek hlavniho EasySD driveru v HDD bance
+HDD_MAIN_START		equ	#0090		;zacatek hlavniho EasyCF driveru v HDD bance
 PIT_START		equ	#0383		;odtud zacina oblast prepisovana PIT patchem
-SD_ROUTINES_START	equ	#F00		;SD routines start here- due to collision with PIT103 patch
+CF_ROUTINES_START	equ	#F00		;ATA rutiny mimo oblast prepisovanou PIT patchem
 
 ;porty HOOD
 P_DAT		equ	195		;8'b110xx011
@@ -190,10 +192,9 @@ DMA		equ	11
 ;;;;;;;;;;;;;;;;;;;;;
 	module	MAIN
 
-; VDT kopie pro bezici BSDOS bude fyzicky v RAM az za SD rutinami.
-; Adresa SDroutines.BSDOS_VDT je dopocitana assemblerem automaticky.
-TAB		equ	SDroutines.BSDOS_VDT
-TAB_DRV		equ	SDroutines.BSDOS_VDT
+; VDT kopie pro bezici BSDOS bude fyzicky za ATA rutinami, zarovnana na xx00.
+TAB		equ	CFroutines.BSDOS_VDT
+TAB_DRV		equ	CFroutines.BSDOS_VDT
 
 INSTALL		di
 	IFDEF ELEMENT
@@ -446,14 +447,14 @@ dmano
 		ld	bc,LEN_MAIN
 		ldir
 
-		ld	de,SD_ROUTINES_START
-		ld	bc,LEN_SD
+		ld	de,CF_ROUTINES_START
+		ld	bc,LEN_CF
 		ldir
 
 ; Ted je stale pripojena HDD/patch banka (98).
-; Az nyni preneseme pracovni VDT na zarovnanou adresu za SD rutinami.
+; Preneseme pracovni VDT na zarovnanou adresu za ATA rutinami.
 		ld	hl,VDT
-		ld	de,SDroutines.BSDOS_VDT
+		ld	de,CFroutines.BSDOS_VDT
 		push	de
 		ld	bc,VDTLEN
 		ldir
@@ -490,7 +491,6 @@ dmano
 
 		
 ;mezera na PIT103
-;a pokracujeme s rutinami obsluhy SD karty
 
 ;presun fontu do HDD banky
 		ld	hl,endfile
@@ -1037,34 +1037,14 @@ HIG24		ld	de,0
 ;de - cyl  e - 211, d -215
 PREP2
 		ex	de,hl
-; vystup primo pro SD rutiny:
+; vystup pro ATA rutiny:
 ; HL = horni 16 bitu LBA, DE = dolni 16 bitu LBA
 		ret
 
 ; fyzicke cteni sectoru
-READ1				;cteni sektoru z SD karty
+READ1				;cteni jednoho 1024B sektoru BSDOSu z CF
 ; vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA
-	push	ix
-	pop	bc
-	ld	(rea1+1),bc
-	push	hl		;horni 16 bitu LBA
-	push	de		;dolni 16 bitu LBA
-	call	@SDroutines.SD_READ	;1x 512 bytes
-rea1	ld	hl,#5555
-	ld	bc,512
-	add	hl,bc
-	push	hl
-	pop	ix
-	pop	de		;dolni reg
-	pop	hl		;horni reg
-	inc	de		;zvys sektor o 1
-	ld	a,d
-	or	e
-	jr	nz,rea2
-	inc	hl
-rea2	call	@SDroutines.SD_READ	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
-	xor	a
-	ret			;later change to JP only.... call is for tetsing purposes	
+	jp	@CFroutines.READ1
 
 
 /*
@@ -1119,27 +1099,7 @@ HEA_RD1		or	%11100000
 ; fyzicky zapis sectoru
 WRITE1
 ; vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA
-	push	ix
-	pop	bc
-	ld	(wri1+1),bc
-	push	hl		;horni 16 bitu LBA
-	push	de		;dolni 16 bitu LBA
-	call	@SDroutines.SD_WRITE
-wri1	ld	hl,#5555
-	ld	bc,512
-	add	hl,bc
-	push	hl
-	pop	ix
-	pop	de		;dolni reg
-	pop	hl		;horni reg
-	inc	de		;zvys sektor o 1
-	ld	a,d
-	or	e
-	jr	nz,wri2
-	inc	hl
-wri2	call	@SDroutines.SD_WRITE	;1x 512 bytes, tj celkem 1024 bajtu=1 sektor BSDOSu
-	xor	a
-	ret			;later change to JP only.... call is for tetsing purposes	
+	jp	@CFroutines.WRITE1
 
 
 /*
@@ -1247,7 +1207,7 @@ RD_SEC2
 
 ; pricte pozadovany pocet LBA sektoru
 ; HL je adresa bufferu, proto ji dame rovnou do IX.
-; PREP_LBA pak vrati LBA primo jako HLDE pro SD_READ.
+; PREP_LBA pak vrati LBA primo jako HLDE pro ATA rutiny.
 		push	ix
 		push	hl
 		pop	ix
@@ -1305,8 +1265,6 @@ WR_PROT 	ld	a,0
 ;------------------------------
 ;---- END OF LBA MODE 010 -----
 ;------------------------------
-
-
 
 ;------------------------------
 
@@ -1653,26 +1611,129 @@ LEN_MAIN	equ	$-HDD_MAIN_START
 	endmodule	; MAIN
 
 
-		disp	SD_ROUTINES_START			;musime dat na adresu #F00- nize to koliduje s PIT103
-	module	SDroutines
-	SD_DRIVER 1
+		disp	CF_ROUTINES_START
+	module	CFroutines
 
-; Pracovni 256B VDT pro BSDOS:
-; pouze EQU - nevklada zadnou vypln do binarky.
-; Zarovnani na nejblizsi dalsi adresu xx00 za skutecnym koncem SD rutin.
+; Cteni jednoho 1024B sektoru BSDOSu jako dva po sobe jdouci ATA sektory.
+; Vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA.
+READ1
+	call	@MAIN.TST_BSY
+	jp	nz,@MAIN.ERROR
+	ld	b,2
+	call	ATA_SETUP_LBA
+	jp	nz,@MAIN.ERROR
+	ld	a,#20			;ATA READ SECTORS
+	out	(P_COM),a
+
+	call	ATA_WAIT_DRQ
+	jp	nz,@MAIN.ERROR
+	push	ix
+	pop	hl
+	call	@MAIN.RD_512
+
+	call	ATA_WAIT_DRQ
+	jp	nz,@MAIN.ERROR
+	call	@MAIN.RD_512
+
+	call	@MAIN.TST_BSY
+	jp	nz,@MAIN.ERROR
+	call	@MAIN.TST_ERR
+	jp	nz,@MAIN.ERROR
+	xor	a
+	ret
+
+; Zapis jednoho 1024B sektoru BSDOSu jako dva po sobe jdouci ATA sektory.
+; Vstup: IX=buffer, HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA.
+WRITE1
+	call	@MAIN.TST_BSY
+	jp	nz,@MAIN.ERROR
+	ld	b,2
+	call	ATA_SETUP_LBA
+	jp	nz,@MAIN.ERROR
+	ld	a,#30			;ATA WRITE SECTORS
+	out	(P_COM),a
+
+	call	ATA_WAIT_DRQ
+	jp	nz,@MAIN.ERROR
+	push	ix
+	pop	hl
+	call	@MAIN.WR_512
+
+	call	ATA_WAIT_DRQ
+	jp	nz,@MAIN.ERROR
+	call	@MAIN.WR_512
+
+	call	@MAIN.TST_BSY
+	jp	nz,@MAIN.ERROR
+	call	@MAIN.TST_ERR
+	jp	nz,@MAIN.ERROR
+	xor	a
+	ret
+
+; Nastavi ATA28 registry pro jedinou podporovanou CF kartu MASTER.
+; Vstup: HL=horni 16 bitu LBA, DE=dolni 16 bitu LBA, B=pocet 512B sektoru.
+; Vystup: Z=OK, NZ=LBA mimo 28bitovy rozsah.
+ATA_SETUP_LBA
+	ld	a,h
+	and	#F0
+	jr	nz,ATA_LBA_RANGE
+	ld	a,h
+	and	#0F
+	or	#E0			;MASTER + LBA mode
+	out	(P_HEA),a
+	ld	a,b
+	out	(P_HSE),a
+	ld	a,e
+	out	(P_NSE),a		;LBA 7..0
+	ld	a,d
+	out	(P_CYL),a		;LBA 15..8
+	ld	a,l
+	out	(P_CYH),a		;LBA 23..16
+	xor	a
+	ret
+
+ATA_LBA_RANGE
+	ld	a,%00010000		;seek/range error pro prevod v MAIN.ERROR
+	or	a
+	ret
+
+; Ceka na DRQ a zaroven osetri timeout a ATA ERR.
+; Vystup: Z=DRQ pripraven, NZ=kod chyby.
+ATA_WAIT_DRQ
+	call	@MAIN.TST_BSY
+	ret	nz
+	bit	0,a
+	jr	nz,ATA_STATUS_ERROR
+	bit	3,a
+	jr	z,ATA_DRQ_ERROR
+	xor	a
+	ret
+
+ATA_STATUS_ERROR
+	in	a,(P_ERR)
+	or	a
+	ret	nz
+	inc	a			;ERR byl nastaven, nevracej falesne Z
+	ret
+
+ATA_DRQ_ERROR
+	ld	a,8
+	or	a
+	ret
+
+; Pracovni 256B VDT pro BSDOS je zarovnana na nejblizsi dalsi xx00.
 BSDOS_VDT	equ	($+#FF)&$FF00
 	ASSERT	(BSDOS_VDT & #FF) == 0
 
 	endmodule
-LEN_SD		equ	$-SD_ROUTINES_START
+LEN_CF		equ	$-CF_ROUTINES_START
 
 	ent
 
 ;LEN		equ	$-144			;posun kvuli PITovi
 
-
-; TAB/TAB_DRV uz zde zadne bajty negeneruji.
-; Pracovni VDT je v RAM na SDroutines.BSDOS_VDT.
+; TAB/TAB_DRV zde zadne bajty negeneruji.
+; Pracovni VDT je v HDD bance na CFroutines.BSDOS_VDT.
 
 ;END1		equ	$-MAIN.KKK+MAIN.SEM1
 END1		equ	$-MAIN.PRESKOC+MAIN.SEM1
