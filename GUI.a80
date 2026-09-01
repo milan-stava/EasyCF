@@ -13,10 +13,13 @@ eightbc_i	incbin	"8BC_I.cde"
 
 ; EasyCF logo, 6x2 znakove bunky (48x16 pixelu).
 ; Prvni dve bunky tvori CF kartu, zbytek napis Easy/CF.
-; Format odpovida sprite2: vyska v bunkach, sirka v bajtech,
-; potom bitmapa po osmi scanlinech.
+; Format sprite2: vyska v bunkach, sirka v bajtech a pro kazdy
+; znakovy radek nejdriv atributy, potom osm bitmapovych scanline.
 EasyCFLogo
 	db	2,6
+
+EasyCFLogoAttrs
+	db	56,56,68,68,68,70
 	db	%10000000,%00000011,%01110100,%00000000,%00000011,%00000000
 	db	%00111111,%11111001,%01100000,%11100011,%01011011,%00000000
 	db	%01100001,%00001101,%01111000,%00110110,%00011011,%00000000
@@ -25,6 +28,9 @@ EasyCFLogo
 	db	%01010001,%00010101,%01111110,%11111011,%11101111,%00000000
 	db	%01010111,%01110101,%00000000,%00000000,%00000000,%00000000
 	db	%01010111,%00010101,%01010101,%01010101,%01010101,%00000000
+
+EasyCFLogoAttrsRow2
+	db	56,56,14,14,14,70
 	db	%01010111,%01110101,%00000000,%00000000,%00000000,%00000000
 	db	%01010001,%01110101,%00000011,%11100111,%11100000,%00000000
 	db	%01011111,%11110101,%00000111,%00110111,%00110000,%00000000
@@ -33,10 +39,6 @@ EasyCFLogo
 	db	%01010101,%01010101,%00000111,%00110111,%00000000,%00000000
 	db	%00101010,%10101001,%00000011,%11100011,%00000000,%00000000
 	db	%10000000,%00000011,%00000000,%00000000,%00000000,%00000000
-
-EasyCFLogoAttrs
-	db	56,56,68,68,68,70
-	db	56,56,14,14,14,70
 ;		include "lbaread.a80"	;vlozeno primo do kodu GUI
 ;		include "sd_rw.asm"	;SD card init, read, write---dame to dozadu
 zvuk		incbin	"ZVUK.BIN"
@@ -124,6 +126,7 @@ nosplash
 	ld	de,#5859		; atributy: radek 2, sloupec 25
 	ld	bc,6
 	ldir
+	ld	hl,EasyCFLogoAttrsRow2
 	ld	de,#5879		; atributy: radek 3, sloupec 25
 	ld	bc,6
 	ldir
@@ -2638,7 +2641,13 @@ end_easy
 	jp	#3978
 	ELSE
 
+	exx
+	ld	hl,#2758
+	exx
+	ld	iy,#5c3a
+
 	pop	hl		;navratova adresa
+	ei
 	ret			;navrat do BASICu
 	ENDIF
 ;user menu
