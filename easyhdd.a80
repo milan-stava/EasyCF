@@ -609,7 +609,8 @@ ADR16
 		xor	a
 		ld	de,65535
 		jp	5
-		db	"EasySD10"
+		db	"EasyCF10"
+;		db	"EasySD10"
 ;		db	"HddEH207"
 
 		ld	a,97

@@ -10,8 +10,33 @@ CaroLogo	incbin	"CaroLogo.bin"
 NewdimLogo	incbin	"NewdimLogo.bin"
 		include	"sprite2.a80"
 eightbc_i	incbin	"8BC_I.cde"
-;EasyLogoSmall	incbin	"EasyLogoSmall.bin"
-EasyLogoSmall	incbin	"ehSDnewlogo.cde"
+
+; EasyCF logo, 6x2 znakove bunky (48x16 pixelu).
+; Prvni dve bunky tvori CF kartu, zbytek napis Easy/CF.
+; Format odpovida sprite2: vyska v bunkach, sirka v bajtech,
+; potom bitmapa po osmi scanlinech.
+EasyCFLogo
+	db	2,6
+	db	%00111111,%11111100, %01111110,%00000000,%00000000,%00000000
+	db	%01111111,%11111110, %01000000,%00111100,%00111110,%01000010
+	db	%01000000,%00000010, %01000000,%00000010,%01000000,%01000010
+	db	%01010101,%01010010, %01111100,%00111110,%00111100,%00111110
+	db	%01000000,%00000010, %01000000,%01000010,%00000010,%00000010
+	db	%01011100,%11110010, %01000000,%01000110,%01000010,%00000100
+	db	%01010000,%10000010, %01111110,%00111010,%00111100,%00111000
+	db	%01010000,%11100010, %00000000,%00000000,%00000000,%00000000
+	db	%01010000,%10000010, %00111100,%01111110,%00000000,%00000000
+	db	%01011100,%10000010, %01000010,%01000000,%00000000,%00000000
+	db	%01000000,%00000010, %01000000,%01000000,%00000000,%00000000
+	db	%01000000,%00000010, %01000000,%01111100,%00000000,%00000000
+	db	%01000000,%00000010, %01000000,%01000000,%00000000,%00000000
+	db	%01000000,%00000010, %01000010,%01000000,%00000000,%00000000
+	db	%01111111,%11111110, %00111100,%01000000,%00000000,%00000000
+	db	%00111111,%11111100, %00000000,%00000000,%00000000,%00000000
+
+EasyCFLogoAttrs
+	db	71,71,68,68,68,68
+	db	71,71,69,69,69,69
 ;		include "lbaread.a80"	;vlozeno primo do kodu GUI
 ;		include "sd_rw.asm"	;SD card init, read, write---dame to dozadu
 zvuk		incbin	"ZVUK.BIN"
@@ -26,8 +51,8 @@ zvukend
 		defw	eightbc_i
 		defb	1,2
 		defw	eightbc_i
-;		defb	25,2
-;		defw	EasyLogoSmall
+		defb	25,2
+		defw	EasyCFLogo
 
 
 	module	GUI
@@ -90,10 +115,17 @@ nosplash
 ; vykresli tabulku
 	ld	a,3
 	call	sprite2.SP_
-;	ld	a,4
-	ld	a,3
+	ld	a,4
 	call	sprite2.SP_
-	call	EasyLogoSmall		;nove logo Easy SD
+
+	; Barvy loga: bila CF karta, zelene Easy, azurove CF.
+	ld	hl,EasyCFLogoAttrs
+	ld	de,#5859		; atributy: radek 2, sloupec 25
+	ld	bc,6
+	ldir
+	ld	de,#5879		; atributy: radek 3, sloupec 25
+	ld	bc,6
+	ldir
 	ld	hl,TEXT1		;vrchni prostredni tabulka
 
 	IFDEF	ELEMENT
@@ -126,7 +158,7 @@ nosplash
 	call	T42_TEXT
 
 	ld	hl,TEXT8
-	ld	bc,#050A
+	ld	bc,#050D
 	call	T42_TEXT	;piseme checking...	
 
 	ld	ix,BUFFER
@@ -153,7 +185,7 @@ nosplash
 ;	jp	LER1
 
 TISKSTATUS1
-	ld	bc,#050F
+	ld	bc,#050D
 	call	T42_TEXT
 
 	pop	af
@@ -951,7 +983,7 @@ FirstFileLBA
 
 next
 	ld	hl,TEXTPARSEC
-	ld	bc,#0B02
+	ld	bc,#0C02
 	call	T42_TEXT
 
 ;novy kod- testuje vsechny 4 partisny
@@ -959,7 +991,7 @@ next
 
 		ld	a,4		;pocet partisen
 		ld	ix,BUFFER+446	;prvni partisna
-		ld	b,#0C	;radek (meni se pro kazdou partisnu)
+		ld	b,#0D	;radek (meni se pro kazdou partisnu)
 		ld	hl,VDT
 		ld	(VDT_pointer+1),hl
 
@@ -1114,6 +1146,8 @@ not_superfloppy
 
 ; Nepodporovane filesystemy se pokusime pojmenovat.
 ; VDT info zustava 0, takze jsou stale pro EasySD nepouzitelne.
+	cp	#49			; MDOS3 raw partition, obvykle bootovaci
+	jp	z,part_mdos3
 	cp	#05			; Extended partition (CHS)
 	jp	z,part_extended
 	cp	#0F			; Extended partition (LBA)
@@ -1133,6 +1167,11 @@ part_other
 part_linux
 	ld	hl,TEXT_LINUX
 	ld	b,0
+	jr	part_text
+
+part_mdos3
+	ld	hl,TEXT_MDOS3
+	ld	b,0			; rozpoznana, ale pro EasyCF nepouzitelna
 	jr	part_text
 
 part_extended
@@ -2608,8 +2647,8 @@ cursor		equ %00001000		;item with cursor (dark blue cursor)
 no_curs		equ %11110111		;item without cursor
 
 page		equ 3		;we will move around 4 items
-cursor_w_stadr	dw #5981	;start address of cursor
-cursor_w_curad	dw #5981	;current address of cursor
+cursor_w_stadr	dw #59A1	;start address of cursor (radek 13, sloupec 1)
+cursor_w_curad	dw #59A1	;current address of cursor
 cursor_len	equ 29
 wind_curs_item	db #55		;current start cursor position of the window (0-page)
 ;item_pg_start	dw #5555	;;;;;start address of first dir item on displayed page
@@ -2816,6 +2855,7 @@ TEXT_FAT32	dc	16,69,"F32"		; platna FAT partition vzdy cyan
 TEXT_NTFS	dc	16,66,"NTFS"
 TEXT_EXFAT	dc	16,66,"exFAT"
 TEXT_LINUX	dc	16,66,"Linux"
+TEXT_MDOS3	dc	16,66,"MDOS3"
 TEXT_GPT	dc	16,66,"GPT"
 TEXT_EXTENDED	dc	16,66,"Extended"
 TEXT_OTHER	dc	16,66,"Other"		;muzeme si dovolit delsi text, bude na radku sam
