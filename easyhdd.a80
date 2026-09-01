@@ -1751,5 +1751,5 @@ endfile
 
 patchLEN	equ 	$-START
 
-		savesna "EasySD.sna",START
-;		savebin "EasySD.bin",START,patchLEN	;binarky se resi v ramci compile.bat od AI
+		savesna "EasyCF.sna",START
+;		savebin "EasyCF.bin",START,patchLEN	;binarky se resi v ramci compile.bat od AI

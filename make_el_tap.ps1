@@ -4,8 +4,8 @@ $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $BSROM = Join-Path $Root "BSROM140_EL.rom"
 $BSDOS = Join-Path $Root "BSDOS.rom"
-$EASY  = Join-Path $Root "EasySD_EL.bin"
-$OUT   = Join-Path $Root "EasySD_EL.tap"
+$EASY  = Join-Path $Root "EasyCF_EL.bin"
+$OUT   = Join-Path $Root "EasyCF_EL.tap"
 
 function Fail($msg) {
     Write-Host "ERROR: $msg"
@@ -28,7 +28,7 @@ $bsdos = Read-Exact $BSDOS 16384
 $easy  = Read-Exact $EASY
 
 if ($easy.Length -gt 16384) {
-    Fail "EasySD_EL.bin is too large for 16K staging page: $($easy.Length) bytes"
+    Fail "EasyCF_EL.bin is too large for 16K staging page: $($easy.Length) bytes"
 }
 
 # --- helper for byte list ---
@@ -99,7 +99,7 @@ Emit ([byte[]]@(0x11)); EmitW 0x0000
 Emit ([byte[]]@(0x01)); EmitW 0x4000
 Emit ([byte[]]@(0xED,0xB0))
 
-# page 3 -> EasySD at #8000
+# page 3 -> EasyCF at #8000
 Emit ([byte[]]@(0x01)); EmitW $PORT7FFD
 Emit ([byte[]]@(0x3E,0x13,0xED,0x79))
 Emit ([byte[]]@(0x21)); EmitW 0xC000
@@ -107,7 +107,7 @@ Emit ([byte[]]@(0x11)); EmitW 0x8000
 Emit ([byte[]]@(0x01)); EmitW $easy.Length
 Emit ([byte[]]@(0xED,0xB0))
 
-# select BSROM bank0 read-only and run EasySD
+# select BSROM bank0 read-only and run EasyCF
 Emit ([byte[]]@(0x3E,64,0xD3,23,0xC3)); EmitW 0x8000
 
 $loader = $code.ToArray()
@@ -198,17 +198,17 @@ $lines = @(
 foreach ($ln in $lines) { foreach ($b in $ln) { $program.Add($b) } }
 
 $tap = New-Object System.Collections.Generic.List[byte]
-foreach ($b in (Tap-Header 0 "EASYSD_EL" $program.Count 10 $program.Count)) { $tap.Add($b) }
+foreach ($b in (Tap-Header 0 "EASYCF_EL" $program.Count 10 $program.Count)) { $tap.Add($b) }
 foreach ($b in (Tap-Block 0xFF $program.ToArray())) { $tap.Add($b) }
 foreach ($b in (Tap-CodeFile "EL128DIR" $loader $BASE)) { $tap.Add($b) }
 foreach ($b in (Tap-CodeFile "BSROM140" $bsrom 0xC000)) { $tap.Add($b) }
 foreach ($b in (Tap-CodeFile "BSDOS" $bsdos 0xC000)) { $tap.Add($b) }
-foreach ($b in (Tap-CodeFile "EasySD_EL" $easy 0xC000)) { $tap.Add($b) }
+foreach ($b in (Tap-CodeFile "EasyCF_EL" $easy 0xC000)) { $tap.Add($b) }
 
 [System.IO.File]::WriteAllBytes($OUT, $tap.ToArray())
 
 Write-Host "TAP build OK"
-Write-Host "  EasySD_EL.tap: $($tap.Count) bytes"
-Write-Host "  EasySD_EL.bin: $($easy.Length) bytes"
+Write-Host "  EasyCF_EL.tap: $($tap.Count) bytes"
+Write-Host "  EasyCF_EL.bin: $($easy.Length) bytes"
 Write-Host "  Loader: $($loader.Length) bytes"
 Write-Host ("  PAGE0=#{0:X4} PAGE1=#{1:X4} PAGE3=#{2:X4} START=#{3:X4}" -f $PAGE0,$PAGE1,$PAGE3,$START)

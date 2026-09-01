@@ -112,7 +112,7 @@ def build(bin_name, tap_name, spectrum_name):
 
 def main():
     targets = [
-        ("EasySD_MB.bin", "EasySD_MB_BIN.tap", "EASYSD_MB"),
+        ("EasyCF_MB.bin", "EasyCF_MB_BIN.tap", "EASYCF_MB"),
     ]
 
     try:

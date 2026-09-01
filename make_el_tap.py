@@ -7,8 +7,8 @@ ROOT = Path(__file__).resolve().parent
 
 BSROM = ROOT / "BSROM140_EL.rom"
 BSDOS = ROOT / "BSDOS.rom"
-EASY  = ROOT / "EasySD_EL.bin"
-OUT   = ROOT / "EasySD_EL.tap"
+EASY  = ROOT / "EasyCF_EL.bin"
+OUT   = ROOT / "EasyCF_EL.tap"
 
 BASE = 0x7000
 PORT_7FFD = 0x7FFD
@@ -30,14 +30,14 @@ bsdos = read_exact(BSDOS, 16384)
 easy  = read_exact(EASY)
 
 if len(easy) > 0x4000:
-    die(f"EasySD_EL.bin is too large for 16K staging page: {len(easy)} bytes")
+    die(f"EasyCF_EL.bin is too large for 16K staging page: {len(easy)} bytes")
 
 # ------------------------------------------------------------
 # Proven eLeMeNt bootstrap:
 # 48K environment + enabled 128K paging
 # #10 -> page 0: BSROM
 # #11 -> page 1: BSDOS
-# #13 -> page 3: EasySD
+# #13 -> page 3: EasyCF
 # then e_zxi_001=#02 and MB02+ bank copy.
 # ------------------------------------------------------------
 code = bytearray()
@@ -111,7 +111,7 @@ e(0x11); ew(0x0000)
 e(0x01); ew(0x4000)
 e(0xED, 0xB0)
 
-# 128K page 3 -> EasySD at #8000
+# 128K page 3 -> EasyCF at #8000
 e(0x01); ew(PORT_7FFD)
 e(0x3E, 0x13)
 e(0xED, 0x79)
@@ -120,7 +120,7 @@ e(0x11); ew(0x8000)
 e(0x01); ew(len(easy))
 e(0xED, 0xB0)
 
-# Select BSROM bank 0 read-only and start EasySD
+# Select BSROM bank 0 read-only and start EasyCF
 e(0x3E, 64)
 e(0xD3, 23)
 e(0xC3); ew(0x8000)
@@ -174,11 +174,11 @@ program = b"".join([
     line(90, bytes([TOK_RANDOMIZE]) + b" " + bytes([TOK_USR]) + b" " + zxnum(START)),
 ])
 
-tap = header(0, "EASYSD_EL", len(program), 10, len(program)) + tap_block(0xFF, program)
+tap = header(0, "EASYCF_EL", len(program), 10, len(program)) + tap_block(0xFF, program)
 tap += code_file("EL128DIR", loader, BASE)
 tap += code_file("BSROM140", bsrom, 0xC000)
 tap += code_file("BSDOS", bsdos, 0xC000)
-tap += code_file("EasySD_EL", easy, 0xC000)
+tap += code_file("EasyCF_EL", easy, 0xC000)
 
 # Validate TAP block lengths/checksums before saving.
 i = 0
@@ -201,7 +201,7 @@ OUT.write_bytes(tap)
 
 print("TAP build OK")
 print(f"  {OUT.name}: {len(tap)} bytes")
-print(f"  EasySD_EL.bin: {len(easy)} bytes")
+print(f"  EasyCF_EL.bin: {len(easy)} bytes")
 print(f"  Loader: {len(loader)} bytes")
 print(f"  Blocks: {blocks}")
 print(f"  PAGE0=#{PAGE0:04X} PAGE1=#{PAGE1:04X} PAGE3=#{PAGE3:04X} START=#{START:04X}")
