@@ -2525,8 +2525,8 @@ Slaveinentify
 
 Endinentify
 ;projed partisny, zda jsou vsechny platne
-	call	check_for_valid
-	jp	z,end_easy
+;	call	check_for_valid
+;	jp	z,end_easy		;vyhodit, pri ani jedne platne partisne to slo primo do exitu
 
 ;old
 ;	ld	a,(@autoconfig)
@@ -2654,6 +2654,20 @@ end_easy
 	jp	#3978
 	ELSE
 
+	call    #3C98
+        di
+        xor     a
+        ld      bc,#5C00
+
+clear_sysvars
+        ld      (bc),a
+        inc     c
+        jr      nz,clear_sysvars
+
+        ld      hl,START-1
+        jp      #1200		;novy konec, neporusuje RAM a obnovuje BASIC
+
+/*
 	exx
 	ld	hl,#2758
 	exx
@@ -2662,6 +2676,7 @@ end_easy
 	pop	hl		;navratova adresa
 	ei
 	ret			;navrat do BASICu
+*/
 	ENDIF
 ;user menu
 ;priprava k menu, rutina IINKEY vraci v A kod klavesy, #B=nahoru, #A=dolu
