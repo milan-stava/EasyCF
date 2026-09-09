@@ -52,3 +52,12 @@ See `EasyCF_documentation.txt` for the complete user and technical manual.
 ## Related project
 
 EasySD is the SD-card counterpart of EasyCF.
+
+
+## Official website
+
+Full HTML documentation, screenshots and project information:
+
+- [English documentation](https://hood.speccy.cz/dwnld/EasySD_CF_infoEN.html)
+- [Czech documentation](https://hood.speccy.cz/dwnld/EasySD_CF_infoCZ.html)
+- [German documentation](https://hood.speccy.cz/dwnld/EasySD_CF_infoDE.html)
