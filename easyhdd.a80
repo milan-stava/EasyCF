@@ -80,7 +80,8 @@
 		org	32768
 START
 	IFDEF ELEMENT
-		; IDE/CF port musi byt na eLeMeNtu zpristupnen jeste pred GUI IDENTIFY.
+		; Vyber externi MB03+ a prepni jej do MB02+/BSDOS rezimu
+		; jeste pred prvnim ATA/IDENTIFY pristupem.
 		call	EL_MB02_INIT
 	ENDIF
 		call	GUI.gui
@@ -89,12 +90,17 @@ START
 
 	IFDEF ELEMENT
 ;------------------------------------------------------------
-; eLeMeNt ZX: enable DivSD + MB02+ compatible memory.
-; On MB03+ the eLeMeNt ID is not present, so this routine
-; returns without changing anything.
-; eLeMeNt ZXi ports: #783B = register select, #793B = data.
-; e_zxi_0FF returns #E1 on eLeMeNt ZX.
-; e_zxi_001 = #02 selects DivSD + MB02+.
+; eLeMeNt ZX + external MB03+: route ZXi accesses to the external
+; MB03+ and switch that interface to MB02+/BSDOS mode.
+;
+; First verify that this really is an eLeMeNt family machine.
+; e_zxi_0FF: upper nibble #E identifies the eLeMeNt family.
+; Lower nibble may change on future eLeMeNt revisions.
+;
+; g_zxi_000 = #00  -> external device (MB03+)
+; m_zxi_000 = #01  -> MB02+ / BSDOS mode
+;
+; m_zxi_002 = #03 -> Hood/EasyCF IDE mapping, verified on real MB03+ hardware.
 EL_MB02_INIT
 		push	af
 		push	bc
@@ -104,14 +110,32 @@ EL_MB02_INIT
 		out	(c),a
 		ld	bc,#793B
 		in	a,(c)
-		cp	#E1
+		and	#F0
+		cp	#E0
 		jr	nz,.done
 
-		ld	bc,#783B
+		; Select external MB03+ in the general ZXi device selector.
+		ld	bc,#7C3B
+		xor	a
+		out	(c),a
+		ld	bc,#7D3B
+		out	(c),a
+
+		; Switch the external MB03+ to MB02+/BSDOS mode.
+		ld	bc,#703B
+		xor	a
+		out	(c),a
+		ld	bc,#713B
 		ld	a,#01
 		out	(c),a
-		ld	bc,#793B
+
+		; Enable the Hood/EasyCF IDE mapping required by the ATA routines.
+		; Value #03 was verified on real MB03+ hardware with working BSDOS+CF.
+		ld	bc,#703B
 		ld	a,#02
+		out	(c),a
+		ld	bc,#713B
+		ld	a,#03
 		out	(c),a
 
 .done		pop	bc
@@ -519,7 +543,7 @@ dmano
 		ldir
 
 ;------------------------------------------------------------
-; Vystup z EasySD
+; Vystup z EasyCF
 ; ELEMENT: korektni start BSDOSu pres systemovou sluzbu #30.
 ;          Pokud AUTOSYS neni nalezen / vrati se, provedeme
 ;          velky 128K reset pres BSROM (BusySoft).
