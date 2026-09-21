@@ -1,0 +1,27 @@
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Záložní soubory editorů
+*.bak
+*.tmp
+
+# Výstupy assembleru
+*.lst
+*.map
+*.sym
+*.bin
+*.out
+*.sna
+
+# exace
+*.exe
+
+#image
+test images/SD_raw/
+
+# TAP build outputs
+*.tap
+
+# Temporary branch comparison files
+*_MAIN.a80
