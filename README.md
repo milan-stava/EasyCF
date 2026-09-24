@@ -59,19 +59,22 @@ The complete CF/SD1/SD2 switching system in version 1.1 is intended for the **fu
 
 ### EasyCF 1.1
 
-Current EasyCF 1.1 files from the `main` branch:
+Stable downloads from the EasyCF 1.1 release:
 
-- [**EasyCF_MB.tap**](https://github.com/milan-stava/EasyCF/raw/main/ver%201.1/EasyCF_MB.tap) – EasyCF 1.1 for MB03+
-- [**EasyCF_EL.tap**](https://github.com/milan-stava/EasyCF/raw/main/ver%201.1/EasyCF_EL.tap) – ESXDOS bootstrap for MB03+, and for eLeMeNt ZX with an external MB03+ and CF card
+- [**EasyCF_v1.1.zip**](https://github.com/milan-stava/EasyCF/releases/download/v1.1/EasyCF_v1.1.zip) – both TAP files and the CZ/EN/DE manuals and WHAT'S NEW files
+- [**EasyCF_MB.tap**](https://github.com/milan-stava/EasyCF/releases/download/v1.1/EasyCF_MB.tap) – EasyCF 1.1 for MB03+
+- [**EasyCF_EL.tap**](https://github.com/milan-stava/EasyCF/releases/download/v1.1/EasyCF_EL.tap) – ESXDOS bootstrap for MB03+, and for eLeMeNt ZX with an external MB03+ and CF card
 
+[EasyCF 1.1 release](https://github.com/milan-stava/EasyCF/releases/tag/v1.1)
 [Browse the complete EasyCF 1.1 directory](https://github.com/milan-stava/EasyCF/tree/main/ver%201.1)
 
 ### EasyCF 1.0.1
 
 Version 1.0.1 remains available as the previous stable generation:
 
-- [**EasyCF_MB.tap**](https://github.com/milan-stava/EasyCF/raw/main/ver%201.0.1/EasyCF_MB.tap) – EasyCF for MB03+
-- [**EasyCF_EL.tap**](https://github.com/milan-stava/EasyCF/raw/main/ver%201.0.1/EasyCF_EL.tap) – ESXDOS bootstrap for MB03+, and for eLeMeNt ZX with an external MB03+ and CF card
+- [**EasyCF_v1.0.1.zip**](https://github.com/milan-stava/EasyCF/releases/download/v1.0.1/EasyCF_v1.0.1.zip) – complete EasyCF 1.0.1 package
+- [**EasyCF_MB_BIN.tap**](https://github.com/milan-stava/EasyCF/releases/download/v1.0.1/EasyCF_MB_BIN.tap) – EasyCF for MB03+
+- [**EasyCF_EL.tap**](https://github.com/milan-stava/EasyCF/releases/download/v1.0.1/EasyCF_EL.tap) – ESXDOS bootstrap for MB03+, and for eLeMeNt ZX with an external MB03+ and CF card
 
 [EasyCF 1.0.1 release](https://github.com/milan-stava/EasyCF/releases/tag/v1.0.1)  
 [Browse the complete EasyCF 1.0.1 directory](https://github.com/milan-stava/EasyCF/tree/main/ver%201.0.1)
